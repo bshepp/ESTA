@@ -12,7 +12,7 @@ from pathlib import Path
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from esta.probes import load_refusal_direction
+from esta.probes.refusal import load_refusal_direction
 
 log = logging.getLogger(__name__)
 
