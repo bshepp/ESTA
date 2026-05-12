@@ -1,0 +1,186 @@
+{
+  "$defs": {
+    "ConfidenceMetrics": {
+      "description": "Aggregate confidence statistics across the generated token sequence.",
+      "properties": {
+        "calibrated_confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "0-1 calibrated confidence; null until a calibration set has been fit.",
+          "title": "Calibrated Confidence"
+        },
+        "entropy_spike_count": {
+          "description": "Number of tokens whose entropy exceeded the spike threshold.",
+          "title": "Entropy Spike Count",
+          "type": "integer"
+        },
+        "low_margin_fraction": {
+          "description": "Fraction of tokens where the top1-top2 gap was below threshold.",
+          "title": "Low Margin Fraction",
+          "type": "number"
+        },
+        "max_entropy": {
+          "title": "Max Entropy",
+          "type": "number"
+        },
+        "mean_entropy": {
+          "description": "Mean per-token entropy in nats.",
+          "title": "Mean Entropy",
+          "type": "number"
+        },
+        "mean_margin": {
+          "description": "Mean top1-top2 logprob gap.",
+          "title": "Mean Margin",
+          "type": "number"
+        },
+        "median_entropy": {
+          "title": "Median Entropy",
+          "type": "number"
+        },
+        "p90_entropy": {
+          "title": "P90 Entropy",
+          "type": "number"
+        }
+      },
+      "required": [
+        "mean_entropy",
+        "median_entropy",
+        "p90_entropy",
+        "max_entropy",
+        "mean_margin",
+        "low_margin_fraction",
+        "entropy_spike_count"
+      ],
+      "title": "ConfidenceMetrics",
+      "type": "object"
+    },
+    "ModelInfo": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "quantization": {
+          "title": "Quantization",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision"
+        }
+      },
+      "required": [
+        "name",
+        "quantization"
+      ],
+      "title": "ModelInfo",
+      "type": "object"
+    },
+    "Provenance": {
+      "properties": {
+        "audit_log_path": {
+          "title": "Audit Log Path",
+          "type": "string"
+        },
+        "request_id": {
+          "title": "Request Id",
+          "type": "string"
+        },
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "string"
+        }
+      },
+      "required": [
+        "timestamp",
+        "request_id",
+        "audit_log_path"
+      ],
+      "title": "Provenance",
+      "type": "object"
+    },
+    "SafetyPressure": {
+      "description": "Magnitude of safety-training pressure inferred from refusal-direction projection.",
+      "properties": {
+        "calibrated_pressure": {
+          "enum": [
+            "low",
+            "moderate",
+            "high",
+            "uncalibrated"
+          ],
+          "title": "Calibrated Pressure",
+          "type": "string"
+        },
+        "layer": {
+          "title": "Layer",
+          "type": "integer"
+        },
+        "probe_version": {
+          "title": "Probe Version",
+          "type": "string"
+        },
+        "refusal_projection_max": {
+          "title": "Refusal Projection Max",
+          "type": "number"
+        },
+        "refusal_projection_mean": {
+          "title": "Refusal Projection Mean",
+          "type": "number"
+        }
+      },
+      "required": [
+        "refusal_projection_max",
+        "refusal_projection_mean",
+        "calibrated_pressure",
+        "probe_version",
+        "layer"
+      ],
+      "title": "SafetyPressure",
+      "type": "object"
+    }
+  },
+  "description": "The structured-metadata extension returned alongside every chat completion.",
+  "properties": {
+    "confidence": {
+      "$ref": "#/$defs/ConfidenceMetrics"
+    },
+    "model": {
+      "$ref": "#/$defs/ModelInfo"
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    },
+    "safety_pressure": {
+      "$ref": "#/$defs/SafetyPressure"
+    },
+    "schema_version": {
+      "default": "0.1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "model",
+    "confidence",
+    "safety_pressure",
+    "provenance"
+  ],
+  "title": "EpistemicState",
+  "type": "object"
+}
