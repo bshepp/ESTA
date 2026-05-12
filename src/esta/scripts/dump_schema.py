@@ -21,7 +21,6 @@ from typing import Any
 
 from esta.schema import EpistemicState
 
-
 DEFAULT_OUTPUT = Path(__file__).resolve().parent.parent / "schema" / "epistemic_state.schema.json"
 
 
