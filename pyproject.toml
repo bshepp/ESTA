@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "esta"
+version = "0.1.0"
+description = "Epistemic State Transparency Agent — local LLM wrapper that exposes internal-state metadata"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Brian Sheppard", email = "bshepp@gmail.com" }]
+keywords = ["llm", "interpretability", "alignment", "transparency", "mechanistic-interpretability"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Runtime deps. Torch/transformers/accelerate are heavy; they are required for
+# the inference path but unit tests do not need them loaded. CI/dev installs
+# without the [model] extra to keep the test environment small.
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.8",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+# Model-runtime deps. Install with `pip install -e .[model]` on a machine that
+# will actually load weights (the dev box's 8GB GPU for smoke tests, or AWS).
+model = [
+    "torch>=2.4",
+    "transformers>=4.45",
+    "accelerate>=0.34",
+    "safetensors>=0.4",
+    "sentencepiece>=0.2",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+    "ruff>=0.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/YOUR_ORG/esta"
+Repository = "https://github.com/YOUR_ORG/esta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+esta = ["schema/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "requires_model: marks tests that require loading model weights (deselect by default)",
+    "requires_gpu: marks tests that require a CUDA-capable GPU",
+]
+addopts = "-ra --strict-markers -m 'not requires_model and not requires_gpu'"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "W"]
+ignore = [
+    "E501",  # line too long; ruff format handles this
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]  # allow assert False in tests

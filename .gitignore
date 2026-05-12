@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Build
+build/
+dist/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Test / type / lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+
+# ESTA-specific
+# Model weights, probe tensors, calibration sets are gitignored by default;
+# they are large and produced by `scripts/extract_refusal_direction.py`.
+data/*.pt
+data/*.safetensors
+data/calibration_sets/*.json
+audit_logs/
+/var/log/esta/
+
+# Notebooks
+.ipynb_checkpoints/
