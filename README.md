@@ -182,6 +182,18 @@ esta/
 - Sharma et al. (2023), [Towards Understanding Sycophancy in Language Models](https://arxiv.org/abs/2310.13548)
 - Templeton et al. (2024), [Scaling Monosemanticity](https://transformer-circuits.pub/2024/scaling-monosemanticity/)
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Contributions require DCO sign-off (`git commit -s`).
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting procedures. Do not open public issues for security bugs.
+
+## Configuration
+
+Copy [`.env.example`](.env.example) to `.env` and adjust paths and model names. The server reads `ESTA_*` environment variables at startup.
+
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE).
