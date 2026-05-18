@@ -239,7 +239,26 @@ This requires labeled training data. Construct it by:
 3. Training a linear probe on activations to predict the hedge-classification.
 4. At inference, comparing predicted vs. actual hedge content.
 
-**4. Extended Metadata Schema (Phase 2)**
+**4. Response-Fidelity / Input-Distortion Detector**
+
+Motivation: a model under safety-training pressure or in conflict-state frequently does not refuse outright. It answers — but answers a narrower, softer, or substituted version of the question, without signalling that the substitution occurred. From the output text this reads as a fluent, on-topic, confident answer; the user cannot tell that the question answered is not the question asked. This is a distinct failure mode from refusal (caught by the Phase 1 refusal probe) and from hedging (caught by the Performed-Uncertainty detector): the response is neither refused nor hedged, it is *quietly reframed*. For high-assurance use this is among the most consequential states to surface, and it is currently invisible in the metadata.
+
+This component is a black-box behavioral comparator and the input-fidelity analogue of the Performed-Uncertainty detector. Instead of comparing predicted vs. actual *hedging*, it compares the user's question against the question the response actually answers, and treats large divergence — when it co-occurs with a mechanistic safety-pressure or conflict-state signal — as evidence that the response was shaped away from the asked question by training pressure rather than by the question's content.
+
+Approach:
+
+1. Reconstruct the *answered question*: from the response text, derive the proposition or question the response is actually responsive to (small LLM extractor; conservative).
+2. Score input-distortion as the semantic divergence between the user's question and the reconstructed answered-question. Use bidirectional entailment / semantic-similarity scoring with a small LLM judge as backup. Normalize to 0–1. High precision over recall; an uncertain comparison reports low distortion, not high.
+3. Anchor to mechanism. The standalone distortion score is weak on its own (a benign answer can legitimately reframe a vague question). The reportable signal is distortion *conditioned on* a mechanistic anchor — input-distortion that co-occurs with high refusal-direction projection (Phase 1) or high conflict-state (component 1). Report both the raw score and the anchored signal; downstream routing consumes the anchored signal.
+4. Aggregate to per-response fields. Never claim the reframing was illegitimate — only that it occurred and co-occurred with training pressure.
+
+Validation: positive controls are prompts in known constraint regions where the model empirically answers a safer adjacent question (reuse the constraint-region set from component 1). Negative controls are neutral factual prompts answered directly, plus benign vague prompts where reframing is legitimate and the mechanistic anchor is low — these must *not* fire the anchored signal. Report precision on the positive set and false-positive rate on the benign-reframe set.
+
+Scope and exclusions: this detector is the one salvageable signal carried forward from a deprecated black-box framework (see provenance). Two other metrics from that framework are explicitly **out of scope** and must not be added: (a) a self-referential-language-rate metric — a thin surface heuristic with no established mapping to epistemic state; (b) a "representation drift" metric computed as hash-distance between string encodings — mathematically unsound (it measures hash dispersion, not semantic change). More generally, this component is a surface-text heuristic and must remain subordinate to the mechanistic probes. It earns a place in the schema only because it is anchored to a mechanistic signal and reported conservatively. It must never be presented as a primary epistemic-state signal; doing so would reintroduce exactly the false-precision failure this project exists to avoid.
+
+Provenance: the input-distortion concept is carried forward from `behavioral-agent-metrics` (D-CCTS), an archived framework that proposed measuring whether agents distort inputs to preserve internal coherence. That framework only ever measured the behavior on synthetic toy agents using an unsound core metric and is not reusable as code. The single idea worth preserving — *input distortion as an observable behavioral signal, valuable only when anchored to a real internal-state measurement* — is recorded here so the decision trail survives the archival of the originating repository.
+
+**5. Extended Metadata Schema (Phase 2)**
 
 ```json
 {
@@ -265,6 +284,13 @@ This requires labeled training data. Construct it by:
       "predicted_hedge_rate": 0.12,
       "actual_hedge_rate": 0.41,
       "performed_uncertainty_signal": 0.29
+    },
+    "response_fidelity": {
+      "input_distortion_score": 0.55,
+      "mechanistic_anchor": "refusal_projection",
+      "anchor_value": 0.71,
+      "anchored_distortion_signal": 0.39,
+      "answered_question_summary": "general, safety-adjacent reframing of the asked question"
     }
   }
 }
@@ -275,6 +301,7 @@ This requires labeled training data. Construct it by:
 - [ ] Conflict-state probe with documented training procedure and validation set
 - [ ] SAE integration via Goodfire SDK or local SAE Lens deployment
 - [ ] Performed-uncertainty detector
+- [ ] Response-fidelity / input-distortion detector (anchored to refusal/conflict signal)
 - [ ] Extended schema with versioning
 - [ ] Validation report on test cases including known constraint regions
 - [ ] Documentation of probe limitations and failure modes
@@ -422,6 +449,8 @@ These are unsolved at project start. The implementation should make progress whe
 3. **Calibration drift.** Models update. Probes calibrated on one model version may not transfer to a fine-tuned descendant. What's the right strategy for maintaining calibration as the underlying model changes?
 
 4. **Adversarial robustness.** If the metadata becomes consequential (downstream systems route on it), users will adversarially construct prompts to manipulate the metadata. How robust are the probes? What attack surface is exposed by metadata transparency?
+
+5. **Black-box signals anchored to mechanism.** The response-fidelity detector is a surface-text heuristic deliberately subordinated to a mechanistic anchor (it is only reported when input-distortion co-occurs with a refusal/conflict signal). Is conditioning a cheap black-box behavioral score on a white-box probe a sound general pattern for admitting low-cost signals without reintroducing false precision, or does the anchored signal inherit the weaknesses of both inputs? What is the right formal treatment of the combination — product, hard gate, or learned combiner — and how should it be calibrated and validated independently of its constituents?
 
 5. **Causal validity.** The probes detect correlations between activation states and behaviors. Are those correlations causal? Activation patching experiments can address this for specific cases but not at scale.
 

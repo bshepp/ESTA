@@ -23,7 +23,7 @@ ESTA is a local, self-hosted wrapper around open-weights language models that em
 
 **Phase 1 (MVP)** — In development. Delivers token-level confidence metrics, refusal-direction projection, and audit logging.
 
-**Phase 2 (Conflict and Features)** — Planned. Adds conflict-state detection, SAE-based feature attribution, performed-uncertainty detection.
+**Phase 2 (Conflict and Features)** — Planned. Adds conflict-state detection, SAE-based feature attribution, performed-uncertainty detection, and response-fidelity / input-distortion detection.
 
 **Phase 3 (Federal Integration)** — Planned. Adds domain calibration, NARA-compliant audit retention, multi-model ensemble.
 
