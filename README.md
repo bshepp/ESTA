@@ -186,6 +186,12 @@ esta/
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Contributions require DCO sign-off (`git commit -s`).
 
+## Integrating another project into ESTA
+
+If you maintain a separate project and are considering folding it into ESTA,
+see [docs/INTEGRATION.md](docs/INTEGRATION.md) for what ESTA is and the hard
+constraints any integration must satisfy.
+
 ## Security
 
 See [SECURITY.md](SECURITY.md) for vulnerability reporting procedures. Do not open public issues for security bugs.
