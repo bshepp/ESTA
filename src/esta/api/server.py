@@ -15,7 +15,10 @@ Configuration (environment variables):
     ESTA_REFUSAL_LAYER  layer index for residual-stream extraction (default: 14)
     ESTA_AUDIT_DIR      audit log directory (default: ./audit_logs)
     ESTA_CALIBRATION    path to calibration.json produced by esta.scripts.calibrate
-                        (unset = serve uncalibrated; set = must be valid or startup fails)
+                        (unset = serve uncalibrated; set = must be valid or startup fails —
+                        "valid" means well-formed JSON with non-inverted thresholds AND
+                        computed against the same model as ESTA_MODEL; any of these
+                        conditions failing causes startup to abort)
 """
 
 from __future__ import annotations

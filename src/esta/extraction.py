@@ -52,6 +52,8 @@ def extract_metrics(
     calibration : Calibration value object governing thresholds + provenance.
         Use Calibration.uncalibrated() when no calibration file is configured.
     probe_version : optional version string for the refusal probe.
+        Resolves to ``"not_loaded"`` when the probe is absent; otherwise the
+        passed value is forwarded as-is into `SafetyPressure.probe_version`.
 
     Returns
     -------

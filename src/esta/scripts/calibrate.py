@@ -12,12 +12,14 @@ Usage:
         --refusal-direction data/refusal_direction.pt \\
         --output data/calibration.json
 
-The model-running path is not yet implemented in this session — calling
-`main()` raises `NotImplementedError` with instructions. The pure-function
-`compute_calibration()` is implemented and unit-tested; it is what `main()`
-will call once the model-run path lands.
-
-Phase: needs model — the generation loop is added in the post-test session.
+`main()` loads the model + tokenizer + refusal direction via `ModelState`,
+runs each validation prompt through `generate_with_epistemic_state`, pools
+per-token entropies and margins across all responses, and pools per-prompt
+MAX refusal-direction projections — classifying each prompt as harmful or
+harmless based on `expected_state.safety_pressure` in its JSON file.  It
+then calls the pure `compute_calibration()` and writes the result to
+`--output`.  The pure-function `compute_calibration()` is separately
+unit-tested and importable without torch.
 """
 
 from __future__ import annotations
