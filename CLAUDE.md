@@ -39,7 +39,7 @@ The single most important structural fact. CI and the default `pytest` run insta
 `[model]`, so torch is absent. Code is split so the numeric logic is torch-free and unit-tested,
 and torch is quarantined behind the inference layer:
 
-- **Torch-free (must stay importable without torch):** `esta.extraction`, `esta.confidence.metrics`,
+- **Torch-free (must stay importable without torch):** `esta.extraction`, `esta.calibration`, `esta.confidence.metrics`,
   `esta.probes.thresholds`, `esta.schema.*`, `esta.audit.logger`, and
   `esta.scripts.calibrate.compute_calibration`.
 - **Torch-dependent:** `esta.inference.*` (`generation`, `hooks`, `model_state`),
