@@ -31,7 +31,7 @@ uvicorn esta.api.server:app --port 8000
 ```
 
 `ESTA_*` env vars (see `.env.example` / `src/esta/api/server.py`): `ESTA_MODEL`, `ESTA_DEVICE`,
-`ESTA_REFUSAL_DIR`, `ESTA_REFUSAL_LAYER`, `ESTA_AUDIT_DIR`.
+`ESTA_REFUSAL_DIR`, `ESTA_REFUSAL_LAYER`, `ESTA_AUDIT_DIR`, `ESTA_CALIBRATION`.
 
 ## Architecture: the torch / no-torch boundary
 

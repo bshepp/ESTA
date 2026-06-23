@@ -14,6 +14,8 @@ Configuration (environment variables):
     ESTA_REFUSAL_DIR    path to refusal_direction.pt (default: ./data/refusal_direction.pt)
     ESTA_REFUSAL_LAYER  layer index for residual-stream extraction (default: 14)
     ESTA_AUDIT_DIR      audit log directory (default: ./audit_logs)
+    ESTA_CALIBRATION    path to calibration.json produced by esta.scripts.calibrate
+                        (unset = serve uncalibrated; set = must be valid or startup fails)
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ import torch
 from fastapi import FastAPI, HTTPException
 
 from esta.audit import AuditLogger
+from esta.calibration import Calibration, load_calibration
 from esta.inference import GenerationParams, ModelState, generate_with_epistemic_state
 from esta.schema import (
     SCHEMA_VERSION,
@@ -53,6 +56,8 @@ DTYPE = torch.bfloat16 if DEVICE == "cuda" else torch.float32
 REFUSAL_DIRECTION_PATH = Path(os.environ.get("ESTA_REFUSAL_DIR", "data/refusal_direction.pt"))
 REFUSAL_HOOK_LAYER = int(os.environ.get("ESTA_REFUSAL_LAYER", "14"))
 AUDIT_LOG_DIR = Path(os.environ.get("ESTA_AUDIT_DIR", "audit_logs"))
+_calibration_env = os.environ.get("ESTA_CALIBRATION")
+CALIBRATION_PATH = Path(_calibration_env) if _calibration_env else None
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("esta.api")
@@ -69,6 +74,7 @@ state = ModelState(
     refusal_direction_path=REFUSAL_DIRECTION_PATH,
 )
 audit = AuditLogger(AUDIT_LOG_DIR)
+calibration: Calibration = Calibration.uncalibrated()
 
 
 # ---------------------------------------------------------------------------
@@ -77,7 +83,14 @@ audit = AuditLogger(AUDIT_LOG_DIR)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    global calibration
     state.load()
+    calibration = load_calibration(CALIBRATION_PATH, MODEL_NAME)
+    log.info(
+        "Calibration: %s (id=%s)",
+        "calibrated" if calibration.calibrated else "uncalibrated",
+        calibration.calibration_id,
+    )
     yield
 
 
@@ -98,6 +111,8 @@ async def health() -> dict[str, Any]:
         "refusal_probe_loaded": state.refusal_probe_loaded,
         "device": DEVICE,
         "schema_version": SCHEMA_VERSION,
+        "calibrated": calibration.calibrated,
+        "calibration_id": calibration.calibration_id,
     }
 
 
@@ -140,6 +155,7 @@ async def chat_completions(req: ChatCompletionRequest) -> ChatCompletionResponse
                 top_p=req.top_p,
             ),
             refusal_layer=REFUSAL_HOOK_LAYER,
+            calibration=calibration,
         )
     except Exception as exc:  # noqa: BLE001 — full detail is logged; client gets a clean 500.
         log.exception("Generation failed for request %s", request_id)
@@ -152,6 +168,8 @@ async def chat_completions(req: ChatCompletionRequest) -> ChatCompletionResponse
         "response": result.response_text,
         "confidence": result.confidence.model_dump(),
         "safety_pressure": result.safety_pressure.model_dump(),
+        "calibration": result.calibration.model_dump(),
+        "calibration_path": str(CALIBRATION_PATH) if CALIBRATION_PATH else None,
         "debug": result.debug_info if req.return_activations else None,
     }
     audit_log_path = audit.write(audit_record)
@@ -169,6 +187,7 @@ async def chat_completions(req: ChatCompletionRequest) -> ChatCompletionResponse
         ),
         confidence=result.confidence,
         safety_pressure=result.safety_pressure,
+        calibration=result.calibration,
         provenance=provenance,
     )
 

@@ -50,10 +50,13 @@ def test_basic_completion_returns_epistemic_state(client) -> None:
     body = r.json()
     assert "epistemic_state" in body
     state = body["epistemic_state"]
-    assert state["schema_version"] == "0.1.0"
+    assert state["schema_version"] == "0.1.1"
     assert "confidence" in state
     assert "safety_pressure" in state
     assert "provenance" in state
     # The model wasn't given a refusal direction in this smoke test, so safety
     # pressure should be uncalibrated.
     assert state["safety_pressure"]["calibrated_pressure"] == "uncalibrated"
+    assert "calibration" in state
+    # No calibration file is configured in this smoke test.
+    assert state["calibration"]["calibrated"] is False

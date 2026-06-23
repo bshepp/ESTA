@@ -75,6 +75,7 @@ export ESTA_MODEL=Qwen/Qwen2.5-7B-Instruct
 export ESTA_REFUSAL_DIR=data/refusal_direction.pt
 export ESTA_REFUSAL_LAYER=14
 export ESTA_AUDIT_DIR=./audit_logs       # default; set elsewhere for production
+export ESTA_CALIBRATION=data/calibration.json   # optional; omit to serve uncalibrated
 uvicorn esta.api.server:app --host 0.0.0.0 --port 8000
 ```
 
@@ -122,7 +123,7 @@ python examples/routing_hooks.py --live "What is the boiling point of water?"
     }
   ],
   "epistemic_state": {
-    "schema_version": "0.1.0",
+    "schema_version": "0.1.1",
     "model": {
       "name": "Qwen/Qwen2.5-7B-Instruct",
       "quantization": "bfloat16"
@@ -138,6 +139,13 @@ python examples/routing_hooks.py --live "What is the boiling point of water?"
       "calibrated_pressure": "low",
       "probe_version": "arditi_v1_unrefined",
       "layer": 14
+    },
+    "calibration": {
+      "calibrated": true,
+      "calibration_id": "a1b2c3d4e5f6",
+      "calibrated_at": "2026-06-20T12:00:00Z",
+      "model": "Qwen/Qwen2.5-7B-Instruct",
+      "source": "calibration.json"
     },
     "provenance": {
       "timestamp": "2026-05-11T18:23:11.443Z",
