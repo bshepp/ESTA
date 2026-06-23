@@ -2,6 +2,7 @@
 
 Schema is versioned via SCHEMA_VERSION. Breaking changes bump the minor digit
 through Phase 1; Phase 2 (conflict + features) bumps the schema to 0.2.0.
+0.1.1 adds the top-level `calibration` provenance block.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-SCHEMA_VERSION = "0.1.0"
+SCHEMA_VERSION = "0.1.1"
 
 PressureLabel = Literal["low", "moderate", "high", "uncalibrated"]
 
@@ -57,6 +58,22 @@ class Provenance(BaseModel):
     audit_log_path: str
 
 
+class CalibrationInfo(BaseModel):
+    """Provenance of the calibration governing this response's thresholds."""
+
+    calibrated: bool = Field(..., description="Whether calibrated thresholds were in use.")
+    calibration_id: str | None = Field(
+        default=None, description="Stable sha256-prefix id of the calibration set."
+    )
+    calibrated_at: str | None = Field(
+        default=None, description="Timestamp the calibration was computed."
+    )
+    model: str | None = Field(
+        default=None, description="Model the calibration was computed against."
+    )
+    source: str | None = Field(default=None, description="Calibration filename.")
+
+
 class EpistemicState(BaseModel):
     """The structured-metadata extension returned alongside every chat completion."""
 
@@ -64,4 +81,5 @@ class EpistemicState(BaseModel):
     model: ModelInfo
     confidence: ConfidenceMetrics
     safety_pressure: SafetyPressure
+    calibration: CalibrationInfo
     provenance: Provenance

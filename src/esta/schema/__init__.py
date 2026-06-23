@@ -6,6 +6,7 @@ from esta.schema.api import (
 )
 from esta.schema.epistemic_state import (
     SCHEMA_VERSION,
+    CalibrationInfo,
     ConfidenceMetrics,
     EpistemicState,
     ModelInfo,
@@ -15,6 +16,7 @@ from esta.schema.epistemic_state import (
 
 __all__ = [
     "SCHEMA_VERSION",
+    "CalibrationInfo",
     "ChatCompletionChoice",
     "ChatCompletionRequest",
     "ChatCompletionResponse",

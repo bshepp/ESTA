@@ -1,5 +1,72 @@
 {
   "$defs": {
+    "CalibrationInfo": {
+      "description": "Provenance of the calibration governing this response's thresholds.",
+      "properties": {
+        "calibrated": {
+          "description": "Whether calibrated thresholds were in use.",
+          "title": "Calibrated",
+          "type": "boolean"
+        },
+        "calibrated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Timestamp the calibration was computed.",
+          "title": "Calibrated At"
+        },
+        "calibration_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Stable sha256-prefix id of the calibration set.",
+          "title": "Calibration Id"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model the calibration was computed against.",
+          "title": "Model"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Calibration filename.",
+          "title": "Source"
+        }
+      },
+      "required": [
+        "calibrated"
+      ],
+      "title": "CalibrationInfo",
+      "type": "object"
+    },
     "ConfidenceMetrics": {
       "description": "Aggregate confidence statistics across the generated token sequence.",
       "properties": {
@@ -157,6 +224,9 @@
   },
   "description": "The structured-metadata extension returned alongside every chat completion.",
   "properties": {
+    "calibration": {
+      "$ref": "#/$defs/CalibrationInfo"
+    },
     "confidence": {
       "$ref": "#/$defs/ConfidenceMetrics"
     },
@@ -170,7 +240,7 @@
       "$ref": "#/$defs/SafetyPressure"
     },
     "schema_version": {
-      "default": "0.1.0",
+      "default": "0.1.1",
       "title": "Schema Version",
       "type": "string"
     }
@@ -179,6 +249,7 @@
     "model",
     "confidence",
     "safety_pressure",
+    "calibration",
     "provenance"
   ],
   "title": "EpistemicState",

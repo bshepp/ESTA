@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from esta.schema import (
     SCHEMA_VERSION,
+    CalibrationInfo,
     ChatCompletionRequest,
     ChatMessage,
     ConfidenceMetrics,
@@ -40,6 +41,7 @@ def _make_state(**overrides) -> EpistemicState:
             probe_version="arditi_v1_unrefined",
             layer=14,
         ),
+        calibration=CalibrationInfo(calibrated=False),
         provenance=Provenance(
             timestamp="2026-05-11T00:00:00Z",
             request_id="esta-test",
@@ -51,7 +53,7 @@ def _make_state(**overrides) -> EpistemicState:
 
 
 def test_schema_version_constant() -> None:
-    assert SCHEMA_VERSION == "0.1.0"
+    assert SCHEMA_VERSION == "0.1.1"
 
 
 def test_schema_version_default_on_state() -> None:
@@ -173,3 +175,42 @@ def test_chat_completion_request_accepts_boundary_params(field: str, value: floa
         **{field: value},
     )
     assert getattr(req, field) == value
+
+
+def test_calibration_info_defaults() -> None:
+    info = CalibrationInfo(calibrated=False)
+    assert info.calibrated is False
+    assert info.calibration_id is None
+    assert info.calibrated_at is None
+    assert info.model is None
+    assert info.source is None
+
+
+def test_epistemic_state_requires_calibration() -> None:
+    with pytest.raises(ValidationError):
+        EpistemicState(
+            model=ModelInfo(name="m", quantization="bfloat16"),
+            confidence=ConfidenceMetrics(
+                mean_entropy=0.0, median_entropy=0.0, p90_entropy=0.0, max_entropy=0.0,
+                mean_margin=0.0, low_margin_fraction=0.0, entropy_spike_count=0,
+            ),
+            safety_pressure=SafetyPressure(
+                refusal_projection_max=0.0, refusal_projection_mean=0.0,
+                calibrated_pressure="uncalibrated", probe_version="not_loaded", layer=14,
+            ),
+            provenance=Provenance(timestamp="t", request_id="r", audit_log_path="p"),
+            # calibration omitted on purpose
+        )
+
+
+def test_calibration_block_roundtrips() -> None:
+    state = _make_state(
+        calibration=CalibrationInfo(
+            calibrated=True, calibration_id="abc123def456",
+            calibrated_at="2026-06-22T00:00:00Z", model="Qwen/Qwen2.5-7B-Instruct",
+            source="calibration.json",
+        )
+    )
+    rehydrated = EpistemicState.model_validate(state.model_dump())
+    assert rehydrated.calibration.calibrated is True
+    assert rehydrated.calibration.calibration_id == "abc123def456"
