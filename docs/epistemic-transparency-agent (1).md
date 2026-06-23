@@ -504,8 +504,12 @@ NIST CAISI's evaluation work could include epistemic-state-transparency as a mea
 
 ## Project Status
 
-- **Phase 1 (MVP)**: Not started
-- **Phase 2 (Conflict + Features)**: Not started
+- **Phase 1 (MVP)**: In progress — confidence metrics, refusal-direction projection,
+  audit logging, schema, and the FastAPI server are implemented and unit-tested.
+  Remaining: run threshold calibration against a real validation set (the
+  `calibrate.py` model-run path is still a stub) to replace placeholder thresholds.
+- **Phase 2 (Conflict + Features)**: Not started — spec'd through component 4
+  (response-fidelity / input-distortion detector).
 - **Phase 3 (Federal Integration)**: Not started
 
 ## Repository Structure (Proposed)

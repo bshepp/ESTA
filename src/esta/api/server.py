@@ -101,6 +101,22 @@ async def health() -> dict[str, Any]:
     }
 
 
+@app.get("/v1/models")
+async def list_models() -> dict[str, Any]:
+    """Minimal OpenAI-compatible model list so standard clients can discover the model."""
+    return {
+        "object": "list",
+        "data": [
+            {
+                "id": MODEL_NAME,
+                "object": "model",
+                "created": int(time.time()),
+                "owned_by": "esta",
+            }
+        ],
+    }
+
+
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(req: ChatCompletionRequest) -> ChatCompletionResponse:
     if state.model is None or state.tokenizer is None:
@@ -114,16 +130,20 @@ async def chat_completions(req: ChatCompletionRequest) -> ChatCompletionResponse
         messages_dict, tokenize=False, add_generation_prompt=True
     )
 
-    result = generate_with_epistemic_state(
-        model_state=state,
-        prompt=prompt,
-        params=GenerationParams(
-            max_tokens=req.max_tokens,
-            temperature=req.temperature,
-            top_p=req.top_p,
-        ),
-        refusal_layer=REFUSAL_HOOK_LAYER,
-    )
+    try:
+        result = generate_with_epistemic_state(
+            model_state=state,
+            prompt=prompt,
+            params=GenerationParams(
+                max_tokens=req.max_tokens,
+                temperature=req.temperature,
+                top_p=req.top_p,
+            ),
+            refusal_layer=REFUSAL_HOOK_LAYER,
+        )
+    except Exception as exc:  # noqa: BLE001 — full detail is logged; client gets a clean 500.
+        log.exception("Generation failed for request %s", request_id)
+        raise HTTPException(status_code=500, detail="Generation failed") from exc
 
     audit_record = {
         "request_id": request_id,

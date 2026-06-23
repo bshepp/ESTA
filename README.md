@@ -93,6 +93,21 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 
 The response is OpenAI-compatible with an additional `epistemic_state` field. Standard OpenAI clients ignore the extra field. ESTA-aware clients use it.
 
+The server also exposes `GET /health` and a minimal OpenAI-compatible `GET /v1/models` for client discovery.
+
+### Example clients
+
+Two dependency-free (standard-library-only) clients live in [`examples/`](examples/):
+
+```bash
+# Send a prompt and print the headline epistemic_state fields:
+python examples/basic_request.py "What is the boiling point of water?"
+
+# Show how a downstream system routes a decision based on the metadata:
+python examples/routing_hooks.py            # offline demo on sample states
+python examples/routing_hooks.py --live "What is the boiling point of water?"
+```
+
 ## Example response
 
 ```json
@@ -171,8 +186,11 @@ esta/
 ├── tests/
 │   ├── unit/                          # no-model-required, run on every PR
 │   └── integration/                   # requires_model marker; opt-in
-└── docs/
-    └── epistemic-transparency-agent (1).md   # full spec
+├── docs/
+│   └── epistemic-transparency-agent (1).md   # full spec
+└── examples/
+    ├── basic_request.py               # send a prompt, print the epistemic_state
+    └── routing_hooks.py               # route a decision based on the metadata
 ```
 
 ## References

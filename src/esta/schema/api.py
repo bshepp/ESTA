@@ -18,10 +18,14 @@ class ChatMessage(BaseModel):
 
 class ChatCompletionRequest(BaseModel):
     model: str = "local"
-    messages: list[ChatMessage]
-    max_tokens: int = 512
-    temperature: float = 0.7
-    top_p: float = 0.95
+    # At least one message is required; an empty list would otherwise produce a
+    # degenerate chat-template prompt and fail deep in generation with a 500.
+    messages: list[ChatMessage] = Field(..., min_length=1)
+    # Bounds give callers a clean 422 instead of a torch error from a negative or
+    # absurd value. The ceilings are generous, not model limits.
+    max_tokens: int = Field(512, ge=1, le=8192)
+    temperature: float = Field(0.7, ge=0.0, le=2.0)
+    top_p: float = Field(0.95, gt=0.0, le=1.0)
     # ESTA extension: include the raw per-token entropies/margins/projections in the
     # response for research/debug. Kept as a request body field rather than a query
     # param so it travels with the rest of the configuration.

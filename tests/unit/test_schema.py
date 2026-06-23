@@ -130,3 +130,46 @@ def test_chat_completion_request_return_activations_in_body() -> None:
         return_activations=True,
     )
     assert req.return_activations is True
+
+
+def test_chat_completion_request_rejects_empty_messages() -> None:
+    # An empty message list must fail validation (422), not reach generation.
+    with pytest.raises(ValidationError):
+        ChatCompletionRequest(messages=[])
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("max_tokens", 0),
+        ("max_tokens", -1),
+        ("temperature", -0.1),
+        ("temperature", 2.1),
+        ("top_p", 0.0),
+        ("top_p", 1.1),
+    ],
+)
+def test_chat_completion_request_rejects_out_of_bounds_params(field: str, value: float) -> None:
+    with pytest.raises(ValidationError):
+        ChatCompletionRequest(
+            messages=[ChatMessage(role="user", content="hi")],
+            **{field: value},
+        )
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("max_tokens", 1),
+        ("max_tokens", 8192),
+        ("temperature", 0.0),
+        ("temperature", 2.0),
+        ("top_p", 1.0),
+    ],
+)
+def test_chat_completion_request_accepts_boundary_params(field: str, value: float) -> None:
+    req = ChatCompletionRequest(
+        messages=[ChatMessage(role="user", content="hi")],
+        **{field: value},
+    )
+    assert getattr(req, field) == value
