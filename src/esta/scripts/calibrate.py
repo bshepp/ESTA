@@ -179,20 +179,105 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main() -> None:
-    args = parse_args()
-    prompts = load_validation_set(args.validation_dir)
+CALIBRATION_MAX_TOKENS = 64
 
-    # Provenance is built early so the failure message can include it.
-    _ = _build_provenance(args, prompts)
 
-    raise NotImplementedError(
-        "The model-run path of calibrate.py is implemented in the post-test "
-        "session. The pure function `compute_calibration` is available and "
-        "tested in tests/unit/test_calibration.py; once the model loop is "
-        "wired in, main() will call it with the captured distributions. "
-        "Use `python -m esta.scripts.calibrate --help` to inspect the CLI."
+def _expected_pressure(data: dict[str, Any]) -> str:
+    return str(data.get("expected_state", {}).get("safety_pressure", "low")).lower()
+
+
+def main(args: argparse.Namespace | None = None) -> None:
+    # Imported here so importing this module stays torch-free (CI imports the
+    # pure functions above without [model] installed).
+    import torch
+
+    from esta.calibration import Calibration
+    from esta.inference import GenerationParams, ModelState, generate_with_epistemic_state
+
+    if args is None:
+        args = parse_args()
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.bfloat16 if device == "cuda" else torch.float32
+    state = ModelState(
+        model_name=args.model,
+        device=device,
+        dtype=dtype,
+        refusal_direction_path=args.refusal_direction,
     )
+    state.load()
+    if not state.refusal_probe_loaded:
+        raise SystemExit(
+            f"refusal direction not found at {args.refusal_direction}; "
+            "pressure calibration requires it. Run extract_refusal_direction first."
+        )
+
+    entropies: list[float] = []
+    margins: list[float] = []
+    harmless_projections: list[float] = []
+    harmful_projections: list[float] = []
+    counts: dict[str, int] = {}
+
+    uncalibrated = Calibration.uncalibrated()
+    gen_params = GenerationParams(max_tokens=CALIBRATION_MAX_TOKENS, temperature=0.0)
+
+    for path in sorted(args.validation_dir.glob("*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        category = data.get("category", path.stem)
+        prompts = data.get("prompts", [])
+        counts[category] = len(prompts)
+        harmful = _expected_pressure(data) == "high"
+
+        for prompt in prompts:
+            text = prompt["text"]
+            chat_prompt = state.tokenizer.apply_chat_template(
+                [{"role": "user", "content": text}],
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            result = generate_with_epistemic_state(
+                model_state=state,
+                prompt=chat_prompt,
+                params=gen_params,
+                refusal_layer=args.refusal_layer,
+                calibration=uncalibrated,
+            )
+            entropies.extend(result.debug_info["raw_entropies"])
+            margins.extend(result.debug_info["raw_margins"])
+            projs = result.debug_info["raw_projections"]
+            if projs:
+                pool = harmful_projections if harmful else harmless_projections
+                pool.append(max(projs))
+
+    if not harmful_projections:
+        raise SystemExit("no harmful-class prompts found (expected_state.safety_pressure='high').")
+    if not harmless_projections:
+        raise SystemExit("no harmless-class prompts found.")
+    if not entropies:
+        raise SystemExit("no tokens generated; cannot calibrate entropy/margin thresholds.")
+
+    output = compute_calibration(
+        entropies=entropies,
+        margins=margins,
+        harmless_projections=harmless_projections,
+        harmful_projections=harmful_projections,
+        spike_percentile=args.percentile_spike,
+        low_margin_percentile=args.percentile_low_margin,
+        pressure_low_percentile=args.percentile_pressure_low,
+        pressure_moderate_percentile=args.percentile_pressure_moderate,
+        provenance=_build_provenance(args, {c: [None] * n for c, n in counts.items()}),
+    )
+
+    if output.pressure_low >= output.pressure_moderate:
+        print(
+            "WARNING: pressure_low >= pressure_moderate — harmful/harmless projection "
+            "distributions overlap; this calibration will be REJECTED at server load. "
+            "Add more/clearer refusal_expected prompts and recalibrate."
+        )
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(output.to_json(), encoding="utf-8")
+    print(f"Wrote calibration to {args.output}")
 
 
 if __name__ == "__main__":
