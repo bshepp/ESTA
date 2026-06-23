@@ -20,11 +20,12 @@ from typing import Any
 import torch
 import torch.nn.functional as F  # noqa: N812 — universal PyTorch convention
 
+from esta.calibration import Calibration
 from esta.extraction import extract_metrics
 from esta.inference.hooks import HookCapture
 from esta.inference.model_state import ModelState
 from esta.probes.refusal import project_activations
-from esta.schema import ConfidenceMetrics, SafetyPressure
+from esta.schema import CalibrationInfo, ConfidenceMetrics, SafetyPressure
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ class GenerationResult:
     response_text: str
     confidence: ConfidenceMetrics
     safety_pressure: SafetyPressure
+    calibration: CalibrationInfo
     debug_info: dict[str, Any]
 
 
@@ -47,6 +49,7 @@ def generate_with_epistemic_state(
     prompt: str,
     params: GenerationParams,
     refusal_layer: int,
+    calibration: Calibration,
 ) -> GenerationResult:
     """Run generation and return the response plus structured state metrics."""
     if model_state.model is None or model_state.tokenizer is None:
@@ -88,11 +91,12 @@ def generate_with_epistemic_state(
     if model_state.refusal_probe_loaded and hook.activations:
         projections = project_activations(hook.activations, model_state.refusal_direction)
 
-    confidence, safety, debug_info = extract_metrics(
+    confidence, safety, calibration_info, debug_info = extract_metrics(
         token_log_probs=token_log_probs,
         projections=projections,
         probe_loaded=model_state.refusal_probe_loaded,
         refusal_layer=refusal_layer,
+        calibration=calibration,
     )
 
     # Augment debug_info with generation-shape info that only the torch side
@@ -104,5 +108,6 @@ def generate_with_epistemic_state(
         response_text=response_text,
         confidence=confidence,
         safety_pressure=safety,
+        calibration=calibration_info,
         debug_info=debug_info,
     )
