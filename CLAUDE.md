@@ -70,8 +70,8 @@ with the record also written to the audit log.
   are deliberate placeholders. When the refusal probe is absent, `safety_pressure` returns the
   explicit stub (`calibrated_pressure="uncalibrated"`, `probe_version="not_loaded"`); uncalibrated
   metrics must stay labeled as such rather than presented as calibrated. Real thresholds come from
-  `esta.scripts.calibrate` against `data/validation_cases/` (the model-run path of `calibrate.main`
-  is intentionally a `NotImplementedError` stub; `compute_calibration` is implemented and tested).
+  running `esta.scripts.calibrate` (fully implemented, needs `[model]` + a refusal direction)
+  against `data/validation_cases/` and serving the resulting JSON via `ESTA_CALIBRATION`.
 
 ## Conventions
 

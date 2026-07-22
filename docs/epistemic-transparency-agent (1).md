@@ -504,10 +504,11 @@ NIST CAISI's evaluation work could include epistemic-state-transparency as a mea
 
 ## Project Status
 
-- **Phase 1 (MVP)**: In progress — confidence metrics, refusal-direction projection,
-  audit logging, schema, and the FastAPI server are implemented and unit-tested.
-  Remaining: run threshold calibration against a real validation set (the
-  `calibrate.py` model-run path is still a stub) to replace placeholder thresholds.
+- **Phase 1 (MVP)**: Code complete — confidence metrics, refusal-direction projection,
+  audit logging, schema (0.1.1 with calibration provenance), the FastAPI server, and the
+  full `calibrate.py` model-run loop are implemented and unit-tested. Remaining: an
+  operator run on a `[model]` box to extract the refusal direction, produce
+  `data/calibration.json`, and pass `pytest -m requires_model tests/integration/`.
 - **Phase 2 (Conflict + Features)**: Not started — spec'd through component 4
   (response-fidelity / input-distortion detector).
 - **Phase 3 (Federal Integration)**: Not started
