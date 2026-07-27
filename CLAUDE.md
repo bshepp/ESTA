@@ -33,6 +33,14 @@ uvicorn esta.api.server:app --port 8000
 `ESTA_*` env vars (see `.env.example` / `src/esta/api/server.py`): `ESTA_MODEL`, `ESTA_DEVICE`,
 `ESTA_REFUSAL_DIR`, `ESTA_REFUSAL_LAYER`, `ESTA_AUDIT_DIR`, `ESTA_CALIBRATION`.
 
+Produce a calibration, then check what the refusal probe is actually responding to (both need
+`[model]` + a refusal direction; outputs are gitignored):
+
+```bash
+python -m esta.scripts.calibrate --model Qwen/Qwen2.5-7B-Instruct --refusal-direction data/refusal_direction.pt --refusal-layer 14 --output data/calibration.json
+python -m esta.scripts.analyze_dual_use --model Qwen/Qwen2.5-7B-Instruct --refusal-direction data/refusal_direction.pt --refusal-layer 14 --calibration data/calibration.json --output data/dual_use_analysis.json
+```
+
 ## Architecture: the torch / no-torch boundary
 
 The single most important structural fact. CI and the default `pytest` run install **without**
@@ -40,8 +48,9 @@ The single most important structural fact. CI and the default `pytest` run insta
 and torch is quarantined behind the inference layer:
 
 - **Torch-free (must stay importable without torch):** `esta.extraction`, `esta.calibration`, `esta.confidence.metrics`,
-  `esta.probes.thresholds`, `esta.schema.*`, `esta.audit.logger`, and
-  `esta.scripts.calibrate.compute_calibration`.
+  `esta.probes.thresholds`, `esta.schema.*`, `esta.audit.logger`, and everything above `main()` in
+  `esta.scripts.calibrate` and `esta.scripts.analyze_dual_use` (both import torch *inside* `main()`,
+  so the modules themselves stay CI-importable).
 - **Torch-dependent:** `esta.inference.*` (`generation`, `hooks`, `model_state`),
   `esta.probes.refusal`, `esta.api.server`, `esta.scripts.extract_refusal_direction`.
 

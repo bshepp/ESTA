@@ -44,6 +44,7 @@ data/*.pt
 data/*.safetensors
 data/calibration_sets/*.json
 data/calibration.json
+data/dual_use_analysis.json
 audit_logs/
 /var/log/esta/
 
