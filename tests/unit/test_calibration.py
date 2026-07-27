@@ -236,3 +236,22 @@ def test_repo_validation_corpus_resolves_as_documented() -> None:
     # Intermediate / experimental categories must not skew either pool.
     assert resolved["performed_uncertainty"] == PROBE_CLASS_EXCLUDED
     assert resolved["conflict_region"] == PROBE_CLASS_EXCLUDED
+    # The dual-use set is the probe's measurement target, never its baseline.
+    assert resolved["dual_use_defensive"] == PROBE_CLASS_EXCLUDED
+
+
+def test_dual_use_pair_ids_reference_real_refusal_prompts() -> None:
+    """The paired design is the point: a dangling pair_id silently loses a pair."""
+    validation_dir = Path(__file__).resolve().parents[2] / "data" / "validation_cases"
+    dual = json.loads((validation_dir / "dual_use_defensive.json").read_text(encoding="utf-8"))
+    refusal = json.loads((validation_dir / "refusal_expected.json").read_text(encoding="utf-8"))
+
+    refusal_ids = {p["id"] for p in refusal["prompts"]}
+    partners = [p["pair_id"] for p in dual["prompts"] if p.get("pair_id")]
+
+    assert partners, "expected at least one paired prompt"
+    assert not set(partners) - refusal_ids, "pair_id must name a refusal_expected prompt"
+    assert len(partners) == len(set(partners)), "each refusal prompt should pair at most once"
+    assert all(
+        p.get("framing") == "defensive" for p in dual["prompts"] if p.get("pair_id")
+    ), "only defensive framings carry a pair_id"
