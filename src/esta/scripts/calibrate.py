@@ -14,12 +14,14 @@ Usage:
 
 `main()` loads the model + tokenizer + refusal direction via `ModelState`,
 runs each validation prompt through `generate_with_epistemic_state`, pools
-per-token entropies and margins across all responses, and pools per-prompt
-MAX refusal-direction projections — classifying each prompt as harmful or
-harmless based on `expected_state.safety_pressure` in its JSON file.  It
-then calls the pure `compute_calibration()` and writes the result to
-`--output`.  The pure-function `compute_calibration()` is separately
-unit-tested and importable without torch.
+per-token entropies and margins across ALL responses, and pools per-prompt
+MAX refusal-direction projections into the harmful / harmless classes chosen
+by `resolve_probe_class()`.  Categories with an intermediate expected
+pressure (or an explicit `probe_class: "excluded"`) feed neither projection
+pool — see that function for why — and the held-out categories are printed
+and recorded in the output provenance.  `main()` then calls the pure
+`compute_calibration()` and writes the result to `--output`.  The pure
+functions here are separately unit-tested and importable without torch.
 """
 
 from __future__ import annotations
@@ -112,7 +114,11 @@ def load_validation_set(validation_dir: Path) -> dict[str, list[dict[str, Any]]]
     return out
 
 
-def _build_provenance(args: argparse.Namespace, prompts: dict[str, list[Any]]) -> dict[str, Any]:
+def _build_provenance(
+    args: argparse.Namespace,
+    prompts: dict[str, list[Any]],
+    probe_classes: dict[str, str] | None = None,
+) -> dict[str, Any]:
     return {
         "timestamp": datetime.now(UTC).isoformat(),
         "model": args.model,
@@ -120,6 +126,9 @@ def _build_provenance(args: argparse.Namespace, prompts: dict[str, list[Any]]) -
         "refusal_direction_path": str(args.refusal_direction)
             if args.refusal_direction else None,
         "categories": {cat: len(p) for cat, p in prompts.items()},
+        # Which pool each category fed, so a calibration can be audited without
+        # re-reading the corpus it came from.
+        "probe_classes": dict(sorted((probe_classes or {}).items())),
         "percentiles": {
             "spike": args.percentile_spike,
             "low_margin": args.percentile_low_margin,
@@ -183,9 +192,49 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 CALIBRATION_MAX_TOKENS = 64
 
+PROBE_CLASS_HARMFUL = "harmful"
+PROBE_CLASS_HARMLESS = "harmless"
+PROBE_CLASS_EXCLUDED = "excluded"
+VALID_PROBE_CLASSES = frozenset({PROBE_CLASS_HARMFUL, PROBE_CLASS_HARMLESS, PROBE_CLASS_EXCLUDED})
 
-def _expected_pressure(data: dict[str, Any]) -> str:
-    return str(data.get("expected_state", {}).get("safety_pressure", "low")).lower()
+
+class ProbeClassError(ValueError):
+    """A validation-case file declares a probe_class that is not recognized."""
+
+
+def resolve_probe_class(data: dict[str, Any]) -> str:
+    """Decide which refusal-probe pool a validation category's projections feed.
+
+    The pressure thresholds are tail statistics of two opposing distributions:
+    `pressure_low` is the upper tail of the HARMLESS projections and
+    `pressure_moderate` is the lower tail of the HARMFUL ones. Only categories
+    that are unambiguously one or the other may contribute. Anything in
+    between — `low_to_moderate`, `moderate_to_high`, an unlabeled file — is
+    EXCLUDED, because pooling an elevated-pressure category with the negatives
+    inflates exactly the tail that sets `pressure_low`, which widens the "low"
+    band and makes the probe under-report pressure.
+
+    A file may state `probe_class` explicitly, which wins over inference; that
+    is how a category can be topically harmful-adjacent yet deliberately held
+    out of both pools. An unrecognized explicit value is a hard error rather
+    than a silent fallback.
+    """
+    explicit = data.get("probe_class")
+    if explicit is not None:
+        value = str(explicit).strip().lower()
+        if value not in VALID_PROBE_CLASSES:
+            raise ProbeClassError(
+                f"category {data.get('category', '<unnamed>')!r} declares "
+                f"probe_class={explicit!r}; expected one of {sorted(VALID_PROBE_CLASSES)}"
+            )
+        return value
+
+    pressure = str(data.get("expected_state", {}).get("safety_pressure", "")).strip().lower()
+    if pressure == "high":
+        return PROBE_CLASS_HARMFUL
+    if pressure == "low":
+        return PROBE_CLASS_HARMLESS
+    return PROBE_CLASS_EXCLUDED
 
 
 def main(args: argparse.Namespace | None = None) -> None:
@@ -219,6 +268,7 @@ def main(args: argparse.Namespace | None = None) -> None:
     harmless_projections: list[float] = []
     harmful_projections: list[float] = []
     counts: dict[str, int] = {}
+    probe_classes: dict[str, str] = {}
 
     uncalibrated = Calibration.uncalibrated()
     gen_params = GenerationParams(max_tokens=CALIBRATION_MAX_TOKENS, temperature=0.0)
@@ -228,7 +278,8 @@ def main(args: argparse.Namespace | None = None) -> None:
         category = data.get("category", path.stem)
         prompts = data.get("prompts", [])
         counts[category] = len(prompts)
-        harmful = _expected_pressure(data) == "high"
+        probe_class = resolve_probe_class(data)
+        probe_classes[category] = probe_class
 
         for prompt in prompts:
             text = prompt["text"]
@@ -247,14 +298,34 @@ def main(args: argparse.Namespace | None = None) -> None:
             entropies.extend(result.debug_info["raw_entropies"])
             margins.extend(result.debug_info["raw_margins"])
             projs = result.debug_info["raw_projections"]
-            if projs:
-                pool = harmful_projections if harmful else harmless_projections
+            # Entropies/margins above pool across every category; only the
+            # projections are class-gated, and an excluded category feeds
+            # neither pool.
+            if projs and probe_class != PROBE_CLASS_EXCLUDED:
+                pool = (
+                    harmful_projections
+                    if probe_class == PROBE_CLASS_HARMFUL
+                    else harmless_projections
+                )
                 pool.append(max(projs))
+
+    for cls in (PROBE_CLASS_HARMFUL, PROBE_CLASS_HARMLESS, PROBE_CLASS_EXCLUDED):
+        members = {c: counts[c] for c, k in probe_classes.items() if k == cls}
+        total = sum(members.values())
+        print(f"probe class {cls:9} {total:4} prompts across {members or '{}'}")
+    if excluded := [c for c, k in probe_classes.items() if k == PROBE_CLASS_EXCLUDED]:
+        print(
+            f"NOTE: {sorted(excluded)} contributed entropy/margin samples but were held out "
+            "of both projection pools (ambiguous or explicitly excluded probe class)."
+        )
 
     if not harmful_projections:
         raise SystemExit("no harmful-class prompts found (expected_state.safety_pressure='high').")
     if not harmless_projections:
-        raise SystemExit("no harmless-class prompts found.")
+        raise SystemExit(
+            "no harmless-class prompts found (expected_state.safety_pressure='low'). "
+            "Categories with an intermediate pressure label are excluded by design."
+        )
     if not entropies:
         raise SystemExit("no tokens generated; cannot calibrate entropy/margin thresholds.")
 
@@ -267,7 +338,9 @@ def main(args: argparse.Namespace | None = None) -> None:
         low_margin_percentile=args.percentile_low_margin,
         pressure_low_percentile=args.percentile_pressure_low,
         pressure_moderate_percentile=args.percentile_pressure_moderate,
-        provenance=_build_provenance(args, {c: [None] * n for c, n in counts.items()}),
+        provenance=_build_provenance(
+            args, {c: [None] * n for c, n in counts.items()}, probe_classes
+        ),
     )
 
     if output.pressure_low >= output.pressure_moderate:

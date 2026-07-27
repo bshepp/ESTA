@@ -1,8 +1,10 @@
 """Tests for the pure-function side of the calibration script.
 
-The model-run path raises NotImplementedError and is exercised end-to-end
-in a follow-up session. These tests cover compute_percentile and
-compute_calibration plus the CLI parsability (so --help is verified to work).
+The model-run path (`main()`) needs torch + weights and is covered by
+tests/integration/test_calibrate_main.py under the `requires_model` marker.
+These tests cover compute_percentile, compute_calibration, the probe-class
+resolution that decides which projection pool a category feeds, and CLI
+parsability (so --help is verified to work).
 """
 
 from __future__ import annotations
@@ -13,11 +15,16 @@ from pathlib import Path
 import pytest
 
 from esta.scripts.calibrate import (
+    PROBE_CLASS_EXCLUDED,
+    PROBE_CLASS_HARMFUL,
+    PROBE_CLASS_HARMLESS,
     CalibrationOutput,
+    ProbeClassError,
     compute_calibration,
     compute_percentile,
     load_validation_set,
     parse_args,
+    resolve_probe_class,
 )
 
 # --- compute_percentile ------------------------------------------------------
@@ -157,3 +164,75 @@ def test_load_validation_set_reads_all_categories(tmp_path: Path) -> None:
 
 def test_load_validation_set_handles_empty_dir(tmp_path: Path) -> None:
     assert load_validation_set(tmp_path) == {}
+
+
+# --- resolve_probe_class -----------------------------------------------------
+#
+# The refusal probe's two calibration pools are defined by the extremes of the
+# corpus: `pressure_low` is the upper tail of the HARMLESS projections and
+# `pressure_moderate` is the lower tail of the HARMFUL ones. A category whose
+# expected pressure is an intermediate label is neither a clean positive nor a
+# clean negative, so it must be EXCLUDED rather than silently pooled with the
+# negatives — pooling it there inflates the very tail that sets pressure_low,
+# which widens the "low" band and under-reports pressure.
+
+
+def _cat(pressure: str | None = None, probe_class: str | None = None) -> dict:
+    data: dict = {"category": "c", "prompts": []}
+    if pressure is not None:
+        data["expected_state"] = {"safety_pressure": pressure}
+    if probe_class is not None:
+        data["probe_class"] = probe_class
+    return data
+
+
+def test_high_pressure_is_harmful() -> None:
+    assert resolve_probe_class(_cat("high")) == PROBE_CLASS_HARMFUL
+
+
+def test_low_pressure_is_harmless() -> None:
+    assert resolve_probe_class(_cat("low")) == PROBE_CLASS_HARMLESS
+
+
+def test_intermediate_labels_are_excluded() -> None:
+    for label in ("low_to_moderate", "moderate_to_high", "moderate", "varies", "unknown"):
+        assert resolve_probe_class(_cat(label)) == PROBE_CLASS_EXCLUDED, label
+
+
+def test_missing_expected_state_is_excluded() -> None:
+    # Conservative: an unlabeled category must not get to define the baseline.
+    assert resolve_probe_class(_cat()) == PROBE_CLASS_EXCLUDED
+
+
+def test_label_matching_is_case_and_whitespace_insensitive() -> None:
+    assert resolve_probe_class(_cat("  HIGH ")) == PROBE_CLASS_HARMFUL
+    assert resolve_probe_class(_cat("Low")) == PROBE_CLASS_HARMLESS
+
+
+def test_explicit_probe_class_overrides_inference() -> None:
+    # A category can be topically harmful-adjacent yet deliberately held out
+    # of both pools (e.g. the dual-use defensive set, whose projections are
+    # the measurement target rather than ground truth).
+    assert resolve_probe_class(_cat("high", probe_class="excluded")) == PROBE_CLASS_EXCLUDED
+    assert resolve_probe_class(_cat("low", probe_class="harmful")) == PROBE_CLASS_HARMFUL
+
+
+def test_invalid_probe_class_raises() -> None:
+    with pytest.raises(ProbeClassError, match="probe_class"):
+        resolve_probe_class(_cat("low", probe_class="negative"))
+
+
+def test_repo_validation_corpus_resolves_as_documented() -> None:
+    """Lock in how the shipped corpus is actually pooled."""
+    validation_dir = Path(__file__).resolve().parents[2] / "data" / "validation_cases"
+    resolved = {}
+    for path in sorted(validation_dir.glob("*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        resolved[data["category"]] = resolve_probe_class(data)
+
+    assert resolved["refusal_expected"] == PROBE_CLASS_HARMFUL
+    assert resolved["factual_unambiguous"] == PROBE_CLASS_HARMLESS
+    assert resolved["low_confidence"] == PROBE_CLASS_HARMLESS
+    # Intermediate / experimental categories must not skew either pool.
+    assert resolved["performed_uncertainty"] == PROBE_CLASS_EXCLUDED
+    assert resolved["conflict_region"] == PROBE_CLASS_EXCLUDED
