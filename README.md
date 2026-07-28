@@ -21,7 +21,7 @@ ESTA is a local, self-hosted wrapper around open-weights language models that em
 
 ## Status
 
-**Phase 1 (MVP)** — In development. Delivers token-level confidence metrics, refusal-direction projection, and audit logging.
+**Phase 1 (MVP)** — Code complete and validated end-to-end on Qwen 2.5 7B Instruct (2026-07-28). Delivers token-level confidence metrics, refusal-direction projection, empirical threshold calibration, and hash-chained audit logging. The probe separates refused from answered prompts cleanly on 7B (AUC 1.00; extraction separation 22.89). Known open issue: the `low`/`moderate` band boundary sits at the top of the benign distribution, so defensive security questions read as `moderate` — see [Example response](#example-response).
 
 **Phase 2 (Conflict and Features)** — Planned. Adds conflict-state detection, SAE-based feature attribution, performed-uncertainty detection, and response-fidelity / input-distortion detection.
 
@@ -40,8 +40,8 @@ See [docs/epistemic-transparency-agent (1).md](<docs/epistemic-transparency-agen
 ### Install
 
 ```bash
-git clone https://github.com/YOUR_ORG/esta.git
-cd esta
+git clone https://github.com/bshepp/ESTA.git
+cd ESTA
 
 # Core install (FastAPI + schema + audit, no model runtime):
 pip install -e .
@@ -66,7 +66,38 @@ python -m esta.scripts.extract_refusal_direction \
     --output data/refusal_direction.pt
 ```
 
-For production calibration, supply your own datasets via `--harmful_file` and `--harmless_file` (50+ prompts each recommended). The built-in defaults are for smoke-tests only.
+For production calibration, supply your own datasets via `--harmful_file` and `--harmless_file` (50+ prompts each recommended). **The built-in defaults are for smoke-tests only, and the difference is large**: 15/15 built-in prompts on Qwen 2.5 0.5B produced a separation of 0.51, while 200 held-out [AdvBench](https://github.com/llm-attacks/llm-attacks) harmful prompts against 200 [Alpaca](https://github.com/tatsu-lab/stanford_alpaca) instructions on Qwen 2.5 7B produced 22.89.
+
+Match the two classes on *register* — both sets above are imperative instructions — so the extracted direction encodes refusal rather than "is an instruction", and hold them out from your validation corpus so the direction is never fitted to the prompts it is later measured on.
+
+### Calibrate the thresholds
+
+Replaces the placeholder thresholds with empirical percentiles measured on your model. Until you do this, `calibrated_pressure` honestly reports `"uncalibrated"`.
+
+```bash
+python -m esta.scripts.calibrate \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --refusal-direction data/refusal_direction.pt \
+    --refusal-layer 14 \
+    --output data/calibration.json
+```
+
+This runs every prompt in [`data/validation_cases/`](data/validation_cases/) and writes thresholds plus provenance. Categories are sorted into three pools — `harmful`, `harmless`, and `excluded` — and the script prints which went where. A calibration whose `pressure_low >= pressure_moderate` means the two distributions overlap; it is refused at server startup rather than served.
+
+### Check what the probe is responding to (optional)
+
+The refusal direction is extracted from sets differing in both topic and refusal-worthiness, so it can encode subject matter rather than refusal disposition. This measures which:
+
+```bash
+python -m esta.scripts.analyze_dual_use \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --refusal-direction data/refusal_direction.pt \
+    --refusal-layer 14 \
+    --calibration data/calibration.json \
+    --output data/dual_use_analysis.json
+```
+
+It pairs each defensive prompt ("how do I *detect* ransomware") against its offensive counterpart on the same topic and reports the per-pair projection delta, matched-control AUCs, behavioral over-refusal, and the false-positive rate a downstream consumer would experience.
 
 ### Run the server
 
@@ -135,7 +166,7 @@ python examples/routing_hooks.py --live "What is the boiling point of water?"
       "entropy_spike_count": 0
     },
     "safety_pressure": {
-      "refusal_projection_max": 0.12,
+      "refusal_projection_max": 3.41,
       "calibrated_pressure": "low",
       "probe_version": "arditi_v1_unrefined",
       "layer": 14
@@ -143,7 +174,7 @@ python examples/routing_hooks.py --live "What is the boiling point of water?"
     "calibration": {
       "calibrated": true,
       "calibration_id": "a1b2c3d4e5f6",
-      "calibrated_at": "2026-06-20T12:00:00Z",
+      "calibrated_at": "2026-07-28T20:15:00Z",
       "model": "Qwen/Qwen2.5-7B-Instruct",
       "source": "calibration.json"
     },
@@ -157,6 +188,17 @@ python examples/routing_hooks.py --live "What is the boiling point of water?"
 ```
 
 For a question with high safety-training pressure, `refusal_projection_max` will be substantially higher and `calibrated_pressure` will read `moderate` or `high`. For an uncertain question, `mean_entropy` and `entropy_spike_count` will be elevated.
+
+**Measured reference points** (Qwen 2.5 7B Instruct, layer 14, direction from 200 held-out AdvBench + 200 Alpaca prompts, 2026-07-28). Mean `refusal_projection_max` by prompt class:
+
+| Prompt class | Mean projection | Typical label |
+|---|---:|---|
+| Unambiguous factual questions | 3.4 | low |
+| Ordinary how-to / analytic requests | 8.7 | low |
+| Defensive framings of harmful topics ("how do I detect X") | 11.6 | moderate |
+| Requests the model refuses | 27.6 | high |
+
+Calibrated thresholds from that run were `pressure_low` 9.76 and `pressure_moderate` 24.22. Note the consequence in row three: **legitimate defensive security questions sit above `pressure_low` and therefore read as `moderate`**, even though the model answers all of them. `pressure_low` is by construction the 95th percentile of the harmless class, so a few percent of known-benign traffic will always land there. If your downstream system treats `moderate` as a flag, calibrate that expectation — or set your own band policy from the raw projection, which is always reported.
 
 ## Audit logging
 
@@ -182,15 +224,26 @@ esta/
 ├── src/esta/
 │   ├── api/server.py                  # FastAPI app
 │   ├── audit/logger.py                # JSONL + SHA-256 chain
+│   ├── calibration.py                 # Calibration value object + fail-loud loader
+│   ├── extraction.py                  # pure-numpy metric assembly (no torch)
 │   ├── confidence/metrics.py          # entropy / margin aggregation
 │   ├── inference/
+│   │   ├── generation.py              # generate + capture activations
 │   │   ├── hooks.py                   # residual-stream forward hooks
 │   │   └── model_state.py             # loaded LM + tokenizer + probe
-│   ├── probes/refusal.py              # refusal-direction projection
+│   ├── probes/
+│   │   ├── refusal.py                 # refusal-direction projection
+│   │   └── thresholds.py              # pressure banding (torch-free)
 │   ├── schema/
 │   │   ├── api.py                     # OpenAI-compatible DTOs
-│   │   └── epistemic_state.py         # metadata schema
-│   └── scripts/extract_refusal_direction.py
+│   │   ├── epistemic_state.py         # metadata schema
+│   │   └── epistemic_state.schema.json  # canonical contract; regenerate, don't hand-edit
+│   └── scripts/
+│       ├── extract_refusal_direction.py
+│       ├── calibrate.py               # empirical thresholds from validation_cases/
+│       ├── analyze_dual_use.py        # does the probe track refusal or topic?
+│       └── dump_schema.py             # regenerate the canonical JSON schema
+├── data/validation_cases/             # known-state prompt sets + curation rules
 ├── tests/
 │   ├── unit/                          # no-model-required, run on every PR
 │   └── integration/                   # requires_model marker; opt-in
@@ -200,6 +253,8 @@ esta/
     ├── basic_request.py               # send a prompt, print the epistemic_state
     └── routing_hooks.py               # route a decision based on the metadata
 ```
+
+The numeric layer is deliberately torch-free so it can be unit-tested without the model runtime; torch is quarantined behind `inference/`, `probes/refusal.py`, and the server. See [CLAUDE.md](CLAUDE.md) for the boundary rules.
 
 ## References
 
@@ -237,7 +292,7 @@ Apache License 2.0. See [LICENSE](LICENSE).
   title = {ESTA: Epistemic State Transparency Agent},
   author = {Sheppard, Brian},
   year = {2026},
-  url = {https://github.com/YOUR_ORG/esta},
+  url = {https://github.com/bshepp/ESTA},
   license = {Apache-2.0}
 }
 ```

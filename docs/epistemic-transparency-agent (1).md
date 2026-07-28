@@ -182,14 +182,14 @@ Add a `?return_activations=true` query parameter (off by default) for research/d
 
 ### MVP Deliverables
 
-- [ ] Working FastAPI server wrapping a local Llama 3.1 8B model
-- [ ] Refusal direction extraction script with reproducible procedure on AdvBench
-- [ ] Per-token confidence aggregation
-- [ ] JSON schema for `epistemic_state` (Phase 1 fields)
-- [ ] Audit logger with integrity hashing
-- [ ] Calibration script that produces percentile cutoffs from a validation set
-- [ ] Test suite covering: API compatibility, schema validation, audit log integrity, deterministic reproduction of state metadata given the same input
-- [ ] Documentation: deployment guide, calibration guide, schema reference
+- [x] Working FastAPI server wrapping a local open-weights model — built against `Qwen/Qwen2.5-7B-Instruct` rather than Llama 3.1 8B (ungated, so it unblocked development); Llama works once HF access is granted
+- [x] Refusal direction extraction script with reproducible procedure on AdvBench — run on 7B with 200 held-out AdvBench harmful vs 200 Alpaca harmless prompts, separation 22.89
+- [x] Per-token confidence aggregation
+- [x] JSON schema for `epistemic_state` (Phase 1 fields) — `SCHEMA_VERSION` 0.1.1, canonical JSON committed and drift-guarded by a test
+- [x] Audit logger with integrity hashing — SHA-256 chain, daily rotation, `verify_chain()`
+- [x] Calibration script that produces percentile cutoffs from a validation set — plus a 306-prompt validation corpus and three-way probe-class pooling
+- [ ] Test suite covering: API compatibility, schema validation, audit log integrity, deterministic reproduction of state metadata given the same input — **the first three are covered** (124 unit tests, 3 `requires_model` integration tests); **determinism under repeated identical input is not yet tested** and remains open
+- [ ] Documentation: deployment guide, calibration guide, schema reference — deployment and calibration walkthroughs live in the README; **a standalone schema reference is still outstanding** (the canonical `epistemic_state.schema.json` is committed but undocumented prose-side)
 
 ---
 
@@ -504,11 +504,32 @@ NIST CAISI's evaluation work could include epistemic-state-transparency as a mea
 
 ## Project Status
 
-- **Phase 1 (MVP)**: Code complete — confidence metrics, refusal-direction projection,
-  audit logging, schema (0.1.1 with calibration provenance), the FastAPI server, and the
-  full `calibrate.py` model-run loop are implemented and unit-tested. Remaining: an
-  operator run on a `[model]` box to extract the refusal direction, produce
-  `data/calibration.json`, and pass `pytest -m requires_model tests/integration/`.
+- **Phase 1 (MVP)**: Complete and validated end-to-end. Confidence metrics, refusal-direction
+  projection, audit logging, schema 0.1.1 with calibration provenance, the FastAPI server, and
+  the `calibrate.py` model-run loop are implemented, unit-tested, and exercised against real
+  7B weights.
+
+  **Validation run (2026-07-28, Qwen2.5-7B-Instruct, layer 14, g5.xlarge/A10G).** Refusal
+  direction extracted from 200 AdvBench harmful and 200 Alpaca harmless prompts, both held out
+  from `data/validation_cases/` and matched on imperative-instruction register: separation
+  **22.89** (harmful mean 27.44, harmless 4.55). Calibration valid — `pressure_low` 9.76,
+  `pressure_moderate` 24.22. Refused-vs-answered separation is **AUC 1.00**, all three
+  `requires_model` integration tests pass, and behavioral over-refusal on prompts the model
+  should answer was 0/50.
+
+  Probe-validity check via the paired dual-use set: all 38 offensive/defensive pairs separated
+  in the expected direction (mean delta +16.0), and the delta is *largest* where the two
+  framings share the most underlying knowledge — evidence the direction encodes refusal
+  disposition rather than subject matter. Secondary sensitivities are real but small: alarming
+  vocabulary alone lifts projection by ~2.2 with form held fixed, and harmful-topic framing by
+  ~3.4, against 27.6 for genuine refusals.
+
+  **Open issue (band policy, not probe quality).** `pressure_low` is the 95th percentile of the
+  harmless class, so it sits at the ceiling of benign traffic by construction. 92% of
+  should-answer dual-use prompts therefore land in the `moderate` band (0 reached `high`),
+  including legitimate defensive security questions. The 14–24 projection range is nearly empty,
+  so a single threshold placed there would separate cleanly. Decide the band policy before
+  downstream systems consume these labels.
 - **Phase 2 (Conflict + Features)**: Not started — spec'd through component 4
   (response-fidelity / input-distortion detector).
 - **Phase 3 (Federal Integration)**: Not started
