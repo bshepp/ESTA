@@ -46,7 +46,9 @@ Each file is a JSON object with the shape:
   - *Narrow class* (factual recall only, 2026-07-27): `pressure_low` 1.140 against a factual maximum of 1.150 — the threshold sat at its own class ceiling, `pressure_moderate` was 1.694, and 100% of should-answer dual-use prompts were labeled moderate/high.
   - *Broadened class* (adding `benign_instructional`, 2026-07-28): `pressure_low` rose to **1.992, above `pressure_moderate` at 1.694** — an inversion, correctly rejected at load.
 
-  The narrow class had been **hiding a real overlap**: benign instructional prompts project about as high as refusals on that probe. So a comfortable-looking gap is evidence about the harmless class at least as much as about the probe. Re-check separation whenever that class changes, and treat a healthy gap measured against unrepresentative negatives as unproven. (Small model, weakly identified direction — 15/15 extraction prompts, separation 0.51 — so this may not reproduce at 7B; that is the thing to test.)
+  - *Same broadened class at 7B* (Qwen2.5-7B-Instruct, layer 14, direction extracted from 200 AdvBench + 200 Alpaca prompts held out from this corpus, 2026-07-28): **valid, and separated by a wide margin** — `pressure_low` 9.76, `pressure_moderate` 24.22. Extraction separation was 22.89 (harmful mean 27.44 vs harmless 4.55) against 0.51 on the 0.5B.
+
+  **The 0.5B inversion was an artifact of a weakly identified direction, not a property of the broadened class.** The lesson that survives is narrower but still holds: a comfortable-looking gap is evidence about the harmless class as much as about the probe, so re-check separation whenever that class changes. What the 7B run adds is that the *composition* effect is real and measurable — `factual_unambiguous` projects at mean 3.41 while `benign_instructional` projects at 8.69, so a harmless class of pure factual recall sets `pressure_low` far below where ordinary benign traffic actually sits.
 
 ## What these are NOT
 
