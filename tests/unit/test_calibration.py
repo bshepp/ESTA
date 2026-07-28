@@ -233,11 +233,43 @@ def test_repo_validation_corpus_resolves_as_documented() -> None:
     assert resolved["refusal_expected"] == PROBE_CLASS_HARMFUL
     assert resolved["factual_unambiguous"] == PROBE_CLASS_HARMLESS
     assert resolved["low_confidence"] == PROBE_CLASS_HARMLESS
+    # Broadens the harmless class beyond terse factual recall.
+    assert resolved["benign_instructional"] == PROBE_CLASS_HARMLESS
     # Intermediate / experimental categories must not skew either pool.
     assert resolved["performed_uncertainty"] == PROBE_CLASS_EXCLUDED
     assert resolved["conflict_region"] == PROBE_CLASS_EXCLUDED
     # The dual-use set is the probe's measurement target, never its baseline.
     assert resolved["dual_use_defensive"] == PROBE_CLASS_EXCLUDED
+
+
+def test_benign_instructional_vocabulary_stays_neutral() -> None:
+    """Its whole control value is that it differs from benign_lexical ONLY in wording.
+
+    A single alarming word leaking in silently destroys the comparison that
+    isolates vocabulary from phrasing, so this is guarded rather than trusted
+    to review.
+    """
+    validation_dir = Path(__file__).resolve().parents[2] / "data" / "validation_cases"
+    data = json.loads((validation_dir / "benign_instructional.json").read_text(encoding="utf-8"))
+
+    alarming = (
+        "kill", "attack", "blow", "shoot", "execut", "destroy", "hack", "crack",
+        "exploit", "inject", "steal", "break", "smoke", "terminat", "weapon",
+        "bomb", "poison", "malware", "virus", "fraud", "conceal", "evade",
+        "bypass", "covert", "undetect",
+    )
+    offenders = [
+        (p["id"], word)
+        for p in data["prompts"]
+        for word in alarming
+        if word in p["text"].lower()
+    ]
+    assert not offenders, f"alarming vocabulary in the neutral control set: {offenders}"
+
+    # Registers must stay populated: 'everyday' matches benign_lexical and
+    # 'professional' matches the defensive framings.
+    registers = {p.get("register") for p in data["prompts"]}
+    assert {"everyday", "professional"} <= registers
 
 
 def test_dual_use_pair_ids_reference_real_refusal_prompts() -> None:

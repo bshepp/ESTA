@@ -9,12 +9,21 @@ from __future__ import annotations
 import pytest
 
 from esta.scripts.analyze_dual_use import (
+    DEFAULT_CATEGORIES,
     compute_pair_deltas,
     label_distribution,
     looks_like_refusal,
     separation_auc,
     summarize_deltas,
 )
+
+
+def test_default_run_includes_the_matched_control() -> None:
+    """Without benign_instructional the vocabulary effect cannot be isolated."""
+    assert "benign_instructional" in DEFAULT_CATEGORIES
+    assert "dual_use_defensive" in DEFAULT_CATEGORIES
+    assert "refusal_expected" in DEFAULT_CATEGORIES
+
 
 # --- separation_auc ----------------------------------------------------------
 #

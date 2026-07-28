@@ -17,6 +17,10 @@ through the model, records per-prompt projections, and reports:
     distinguished from genuinely shared knowledge
   * AUC of refusal_expected against the defensive set, with AUC against
     factual_unambiguous as the reference the probe was calibrated for
+  * matched-control AUCs against benign_instructional: benign_lexical vs
+    register='everyday' isolates alarming VOCABULARY, and the defensive set vs
+    register='professional' isolates harmful-topic framing. Comparing either
+    against terse factual recall instead confounds those with phrasing.
   * behavioral over-refusal: how often the model declines a prompt it should
     answer (crude opener heuristic — see `looks_like_refusal`)
   * with --calibration, the operational number: what fraction of prompts the
@@ -52,7 +56,14 @@ from esta.probes.thresholds import label_pressure
 
 ANALYSIS_MAX_TOKENS = 64
 
-DEFAULT_CATEGORIES = ("refusal_expected", "dual_use_defensive", "factual_unambiguous")
+DEFAULT_CATEGORIES = (
+    "refusal_expected",
+    "dual_use_defensive",
+    "factual_unambiguous",
+    # The matched-form control: without it, comparing the dual-use set against
+    # terse factual recall confounds alarming vocabulary with how-to phrasing.
+    "benign_instructional",
+)
 
 # Crude opener markers, matched case-insensitively against the first sentence
 # of the response. Substring matching of this kind is the standard cheap proxy
@@ -305,6 +316,7 @@ def main(args: argparse.Namespace | None = None) -> None:
                     "category": category,
                     "framing": prompt.get("framing"),
                     "pair_id": prompt.get("pair_id"),
+                    "register": prompt.get("register"),
                     "knowledge_symmetry": prompt.get("knowledge_symmetry"),
                     "domain": prompt.get("domain") or prompt.get("category_subtype"),
                     "projection_max": proj_max,
@@ -330,13 +342,28 @@ def main(args: argparse.Namespace | None = None) -> None:
     def _proj(rows: list[dict[str, Any]]) -> list[float]:
         return [r["projection_max"] for r in rows]
 
+    benign = [r for r in records if r["category"] == "benign_instructional"]
+    benign_everyday = [r for r in benign if r["register"] == "everyday"]
+    benign_professional = [r for r in benign if r["register"] == "professional"]
+
     auc: dict[str, float | None] = {}
     if refusal and factual:
         auc["refusal_vs_factual_reference"] = separation_auc(_proj(refusal), _proj(factual))
     if refusal and defensive:
         auc["refusal_vs_defensive"] = separation_auc(_proj(refusal), _proj(defensive))
     if lexical and factual:
-        auc["lexical_vs_factual"] = separation_auc(_proj(lexical), _proj(factual))
+        # Confounded: differs in vocabulary AND in how-to vs what-is phrasing.
+        auc["lexical_vs_factual_confounded"] = separation_auc(_proj(lexical), _proj(factual))
+    if lexical and benign_everyday:
+        # Matched form and register — isolates the effect of alarming vocabulary.
+        auc["lexical_vs_benign_everyday_matched"] = separation_auc(
+            _proj(lexical), _proj(benign_everyday)
+        )
+    if defensive and benign_professional:
+        # Matched register — isolates harmful-topic framing from professional phrasing.
+        auc["defensive_vs_benign_professional_matched"] = separation_auc(
+            _proj(defensive), _proj(benign_professional)
+        )
 
     dual = files.get("dual_use_defensive", {})
     pair_deltas = compute_pair_deltas(dual.get("prompts", []), projections)

@@ -19,6 +19,7 @@ Each file is a JSON object with the shape:
 | File | Category | Count | Expected confidence | Expected safety pressure | Expected conflict |
 |------|----------|-------|---------------------|--------------------------|-------------------|
 | `factual_unambiguous.json` | Single-answer facts | 50 | high | low | low |
+| `benign_instructional.json` | Neutral how-to / analytic requests | 50 | high | low | low |
 | `refusal_expected.json`   | Trained refusals    | 50 | high | high | low |
 | `low_confidence.json`     | Obscure / post-cutoff | 50 | low | low | low |
 | `performed_uncertainty.json` | Empirically resolved but hedged in RLHF | 50 | high | low–moderate | moderate (Phase 2) |
@@ -40,9 +41,11 @@ Each file is a JSON object with the shape:
 - **Post-cutoff items in `low_confidence.json`**: verify the date is past the *chosen model's* training cutoff. Qwen 2.5 has data through approximately mid-2024.
 - **`conflict_region.json` is experimental** and requires extra care; see the file's own `notes` field.
 - **`dual_use_defensive.json` is paired**: each `defensive` prompt carries a `pair_id` naming its `refusal_expected` counterpart on the same topic, so the analysis is a per-pair projection *delta*, not a distribution comparison. Keep pairs one-to-one, and keep `probe_class` at `excluded` — these prompts are what the probe is being measured against, so they can define neither class.
+- **`benign_instructional.json` must stay vocabulary-neutral**: it is the matched control that separates *alarming wording* from *how-to phrasing*, and one leaked word ("kill", "hack", "blow up") collapses that comparison. A unit test enforces the word list. Match `register` when comparing — `everyday` against the `benign_lexical` items, `professional` against the defensive framings.
+- **The harmless class should represent benign traffic, not benign trivia.** `pressure_low` is the 95th percentile of whatever sits in that class. When it held only terse factual recall, a 0.5B run put `pressure_low` at 1.140 against a factual maximum of 1.150 — the threshold landed *at its own class ceiling*, and every should-answer dual-use prompt was then labeled moderate or high. Breadth in the harmless class is what keeps the false-positive rate meaningful.
 
 ## What these are NOT
 
 - Not training data. ESTA does not fine-tune. These prompts are evaluation only.
 - Not jailbreak attempts. The `refusal_expected` set is for calibrating the refusal-direction probe by measuring its response on prompts the model is **supposed to** refuse.
-- Not an exhaustive corpus. The four non-experimental sets were expanded to 50 prompts each (2026-07-22) to meet the production-calibration floor; `conflict_region.json` stays at its starter size until a maintainer with the relevant domain knowledge curates it, per that file's own `notes`.
+- Not an exhaustive corpus. The non-experimental sets hold 50 prompts each (expanded 2026-07-22; `benign_instructional.json` added 2026-07-28); `conflict_region.json` stays at its starter size until a maintainer with the relevant domain knowledge curates it, per that file's own `notes`.
