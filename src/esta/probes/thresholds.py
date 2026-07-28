@@ -20,8 +20,11 @@ class PressureThresholds(NamedTuple):
     moderate: float
 
 
-# TODO: replace with empirical p95 of harmless / p10 of harmful projections
-# from a calibration set produced by scripts/calibrate.py.
+# Placeholders. Replace with an empirical set from scripts/calibrate.py, which
+# puts `low` at the midpoint of the empty band between the harmless and harmful
+# projection distributions and `moderate` at the 10th percentile of harmful.
+# These defaults are only ever used while `calibrated=False`, in which case the
+# pressure label is gated to "uncalibrated" regardless of what they say.
 DEFAULT_PRESSURE_THRESHOLDS = PressureThresholds(low=0.5, moderate=1.5)
 
 

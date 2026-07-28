@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,6 +42,10 @@ DEFAULT_PRESSURE_LOW_PERCENTILE = 95.0       # of HARMLESS projections
 DEFAULT_PRESSURE_MODERATE_PERCENTILE = 10.0  # of HARMFUL projections
 
 
+POLICY_MAX_MARGIN = "max-margin"
+POLICY_HARMLESS_PERCENTILE = "harmless-percentile"
+
+
 @dataclass
 class CalibrationOutput:
     """A calibrated threshold set plus provenance for reproducibility."""
@@ -49,10 +54,33 @@ class CalibrationOutput:
     low_margin_threshold: float
     pressure_low: float
     pressure_moderate: float
+    pressure_low_policy: str = POLICY_MAX_MARGIN
     provenance: dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=2, sort_keys=True) + "\n"
+
+
+def max_margin_threshold(
+    harmless: Sequence[float],
+    harmful: Sequence[float],
+) -> float | None:
+    """Midpoint of the empty band between two separable classes, else None.
+
+    When every harmless projection falls strictly below every harmful one there
+    is a gap containing no observations. The midpoint of that gap classifies
+    both labeled classes perfectly while sitting as far as possible from each,
+    which is what makes it robust to the next sample landing slightly either
+    side. Returns None when the classes overlap or merely touch, because then no
+    such band exists and the caller must fall back.
+    """
+    if not len(harmless) or not len(harmful):
+        return None
+    top_harmless = max(harmless)
+    bottom_harmful = min(harmful)
+    if top_harmless >= bottom_harmful:
+        return None
+    return (top_harmless + bottom_harmful) / 2.0
 
 
 def compute_percentile(values: list[float], percentile: float) -> float:
@@ -88,18 +116,34 @@ def compute_calibration(
     harmful_projections : refusal-direction projections on prompts that are
         EXPECTED to be refused (the positive class)
 
-    The pressure thresholds use the percentile of the *opposite* distribution
-    so that the moderate-pressure cutoff sits at the low end of the harmful
-    distribution and the low-pressure cutoff sits at the high end of the
-    harmless distribution. If `pressure_low >= pressure_moderate`, the two
-    distributions overlap and the probe is not well-calibrated; the caller
-    should investigate.
+    `pressure_moderate` is the lower tail of the harmful distribution: above it,
+    a projection is in confident-refusal territory.
+
+    `pressure_low` is the boundary below which a projection is reported as
+    ordinary. When the two classes are separable it is placed at the midpoint of
+    the empty band between them (`max-margin`). The earlier rule — the 95th
+    percentile of the harmless class — put that boundary at the *ceiling* of
+    benign traffic, which by construction labeled a few percent of known-benign
+    prompts "moderate" and swept in anything modestly above benign with them.
+
+    When the classes overlap there is no empty band, so it falls back to the
+    harmless percentile and `pressure_low >= pressure_moderate` may result,
+    which the loader treats as a hard error. `pressure_low_policy` records which
+    rule produced the number so a calibration can be audited after the fact.
     """
+    margin = max_margin_threshold(harmless_projections, harmful_projections)
+    if margin is not None:
+        pressure_low, policy = margin, POLICY_MAX_MARGIN
+    else:
+        pressure_low = compute_percentile(harmless_projections, pressure_low_percentile)
+        policy = POLICY_HARMLESS_PERCENTILE
+
     return CalibrationOutput(
         spike_threshold=compute_percentile(entropies, spike_percentile),
         low_margin_threshold=compute_percentile(margins, low_margin_percentile),
-        pressure_low=compute_percentile(harmless_projections, pressure_low_percentile),
+        pressure_low=pressure_low,
         pressure_moderate=compute_percentile(harmful_projections, pressure_moderate_percentile),
+        pressure_low_policy=policy,
         provenance=provenance or {},
     )
 

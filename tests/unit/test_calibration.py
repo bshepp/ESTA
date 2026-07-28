@@ -15,6 +15,8 @@ from pathlib import Path
 import pytest
 
 from esta.scripts.calibrate import (
+    POLICY_HARMLESS_PERCENTILE,
+    POLICY_MAX_MARGIN,
     PROBE_CLASS_EXCLUDED,
     PROBE_CLASS_HARMFUL,
     PROBE_CLASS_HARMLESS,
@@ -23,6 +25,7 @@ from esta.scripts.calibrate import (
     compute_calibration,
     compute_percentile,
     load_validation_set,
+    max_margin_threshold,
     parse_args,
     resolve_probe_class,
 )
@@ -76,8 +79,12 @@ def test_compute_calibration_returns_expected_thresholds() -> None:
     # numpy.percentile uses linear interpolation; expected for 1..100 are 95.05 and 10.9.
     assert 94.0 < out.spike_threshold < 96.0
     assert 10.0 < out.low_margin_threshold < 12.0
-    assert 94.0 < out.pressure_low < 96.0
     assert 110.0 < out.pressure_moderate < 112.0
+    # These classes are separable (harmless tops out at 100, harmful starts at
+    # 101), so pressure_low is the midpoint of the empty band rather than the
+    # 95th percentile of harmless.
+    assert out.pressure_low_policy == POLICY_MAX_MARGIN
+    assert out.pressure_low == 100.5
 
 
 def test_compute_calibration_with_overlapping_distributions() -> None:
@@ -120,7 +127,7 @@ def test_calibration_output_to_json_is_round_trippable() -> None:
     data = json.loads(out.to_json())
     assert set(data.keys()) == {
         "spike_threshold", "low_margin_threshold", "pressure_low",
-        "pressure_moderate", "provenance",
+        "pressure_moderate", "pressure_low_policy", "provenance",
     }
     assert data["provenance"] == {"k": "v"}
 
@@ -164,6 +171,91 @@ def test_load_validation_set_reads_all_categories(tmp_path: Path) -> None:
 
 def test_load_validation_set_handles_empty_dir(tmp_path: Path) -> None:
     assert load_validation_set(tmp_path) == {}
+
+
+# --- max_margin_threshold ----------------------------------------------------
+#
+# `pressure_low` used to be the 95th percentile of the harmless class, which put
+# the low/moderate boundary AT the ceiling of benign traffic by construction: a
+# few percent of known-benign prompts were guaranteed to read "moderate", and
+# anything modestly above benign read "moderate" too. Measured on Qwen2.5-7B
+# (2026-07-28) that flagged 92% of prompts the model answers without hesitation.
+#
+# When the two labeled classes are separable there is an empty band between them
+# (11.06..15.10 on that run), and a threshold placed in the middle of it makes
+# zero errors on both classes while sitting as far as possible from each.
+
+
+def test_max_margin_is_midpoint_of_the_empty_band() -> None:
+    assert max_margin_threshold(harmless=[1.0, 2.0, 3.0], harmful=[7.0, 8.0]) == 5.0
+
+
+def test_max_margin_ignores_bulk_and_uses_the_facing_edges() -> None:
+    # Only max(harmless) and min(harmful) matter; the rest of the mass does not.
+    assert max_margin_threshold(harmless=[0.0] * 50 + [4.0], harmful=[6.0, 99.0]) == 5.0
+
+
+def test_max_margin_returns_none_when_classes_overlap() -> None:
+    assert max_margin_threshold(harmless=[1.0, 9.0], harmful=[5.0, 8.0]) is None
+
+
+def test_max_margin_returns_none_when_classes_touch() -> None:
+    """Touching is not separated: there is no empty band to sit in."""
+    assert max_margin_threshold(harmless=[1.0, 5.0], harmful=[5.0, 9.0]) is None
+
+
+def test_max_margin_requires_both_classes() -> None:
+    assert max_margin_threshold(harmless=[], harmful=[1.0]) is None
+    assert max_margin_threshold(harmless=[1.0], harmful=[]) is None
+
+
+# --- compute_calibration: threshold policy -----------------------------------
+
+
+def test_separable_classes_use_max_margin_policy() -> None:
+    out = compute_calibration(
+        entropies=[1.0, 2.0],
+        margins=[1.0, 2.0],
+        harmless_projections=[1.0, 2.0, 3.0],
+        harmful_projections=[7.0, 8.0, 9.0],
+    )
+    assert out.pressure_low_policy == POLICY_MAX_MARGIN
+    assert out.pressure_low == 5.0
+    # The whole point: benign no longer sits at or above the boundary.
+    assert out.pressure_low > 3.0
+
+
+def test_max_margin_can_never_invert() -> None:
+    """pressure_low < min(harmful) <= p10(harmful) = pressure_moderate, always."""
+    out = compute_calibration(
+        entropies=[1.0],
+        margins=[1.0],
+        harmless_projections=[1.0, 2.0],
+        harmful_projections=[100.0] + [1000.0] * 20,
+    )
+    assert out.pressure_low < out.pressure_moderate
+
+
+def test_overlapping_classes_fall_back_to_percentile_policy() -> None:
+    """No empty band exists, so the old behaviour applies and stays auditable."""
+    out = compute_calibration(
+        entropies=[1.0],
+        margins=[1.0],
+        harmless_projections=[1.0, 5.0, 9.0],
+        harmful_projections=[2.0, 6.0, 8.0],
+    )
+    assert out.pressure_low_policy == POLICY_HARMLESS_PERCENTILE
+    assert out.pressure_low == compute_percentile([1.0, 5.0, 9.0], 95.0)
+
+
+def test_policy_is_serialized_for_audit() -> None:
+    out = compute_calibration(
+        entropies=[1.0],
+        margins=[1.0],
+        harmless_projections=[1.0],
+        harmful_projections=[9.0],
+    )
+    assert json.loads(out.to_json())["pressure_low_policy"] == POLICY_MAX_MARGIN
 
 
 # --- resolve_probe_class -----------------------------------------------------

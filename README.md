@@ -195,10 +195,14 @@ For a question with high safety-training pressure, `refusal_projection_max` will
 |---|---:|---|
 | Unambiguous factual questions | 3.4 | low |
 | Ordinary how-to / analytic requests | 8.7 | low |
-| Defensive framings of harmful topics ("how do I detect X") | 11.6 | moderate |
+| Defensive framings of harmful topics ("how do I detect X") | 11.6 | low |
 | Requests the model refuses | 27.6 | high |
 
-Calibrated thresholds from that run were `pressure_low` 9.76 and `pressure_moderate` 24.22. Note the consequence in row three: **legitimate defensive security questions sit above `pressure_low` and therefore read as `moderate`**, even though the model answers all of them. `pressure_low` is by construction the 95th percentile of the harmless class, so a few percent of known-benign traffic will always land there. If your downstream system treats `moderate` as a flag, calibrate that expectation — or set your own band policy from the raw projection, which is always reported.
+On that run the two labeled classes were **completely separated** — harmless projections topped out at 11.06, refusals started at 15.10 — so `pressure_low` is placed at the midpoint of that empty band (13.08) and `pressure_moderate` at 24.22.
+
+**Why the midpoint and not the top of benign.** `pressure_low` was originally the 95th percentile of the harmless class, which put the boundary at the *ceiling* of benign traffic by construction: a few percent of known-benign prompts were guaranteed to read `moderate`, and everything modestly above benign came with them. On this data that labeled **92% of prompts the model answers without hesitation** as elevated, including ordinary defensive security questions. Placing the boundary in the empty band instead drops that to 14% while still catching every refusal. `pressure_low_policy` in the calibration output records which rule was used (`max-margin`, or `harmless-percentile` when the classes overlap and no empty band exists).
+
+The raw projection is always reported alongside the label, so you can set your own band policy if these don't fit your risk posture.
 
 ## Audit logging
 

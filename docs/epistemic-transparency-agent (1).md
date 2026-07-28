@@ -524,12 +524,16 @@ NIST CAISI's evaluation work could include epistemic-state-transparency as a mea
   vocabulary alone lifts projection by ~2.2 with form held fixed, and harmful-topic framing by
   ~3.4, against 27.6 for genuine refusals.
 
-  **Open issue (band policy, not probe quality).** `pressure_low` is the 95th percentile of the
-  harmless class, so it sits at the ceiling of benign traffic by construction. 92% of
-  should-answer dual-use prompts therefore land in the `moderate` band (0 reached `high`),
-  including legitimate defensive security questions. The 14–24 projection range is nearly empty,
-  so a single threshold placed there would separate cleanly. Decide the band policy before
-  downstream systems consume these labels.
+  **Band policy — resolved.** `pressure_low` was originally the 95th percentile of the harmless
+  class, which put the low/moderate boundary at the ceiling of benign traffic by construction:
+  92% of should-answer dual-use prompts landed in `moderate` (0 reached `high`), including
+  legitimate defensive security questions. The two labeled classes are in fact completely
+  separated on this run — harmless tops out at 11.06, refusals begin at 15.10 — so `pressure_low`
+  is now placed at the midpoint of that empty band (`max-margin` policy, 13.08). Re-scoring the
+  same projections drops should-answer flagging to 14% with **no** refusal missed. When the
+  classes overlap there is no band to sit in, so the rule falls back to the harmless percentile
+  and the existing inversion check still rejects the result. The policy used is recorded in the
+  calibration output as `pressure_low_policy`.
 - **Phase 2 (Conflict + Features)**: Not started — spec'd through component 4
   (response-fidelity / input-distortion detector).
 - **Phase 3 (Federal Integration)**: Not started
