@@ -188,7 +188,7 @@ Add a `?return_activations=true` query parameter (off by default) for research/d
 - [x] JSON schema for `epistemic_state` (Phase 1 fields) — `SCHEMA_VERSION` 0.1.1, canonical JSON committed and drift-guarded by a test
 - [x] Audit logger with integrity hashing — SHA-256 chain, daily rotation, `verify_chain()`
 - [x] Calibration script that produces percentile cutoffs from a validation set — plus a 306-prompt validation corpus and three-way probe-class pooling
-- [ ] Test suite covering: API compatibility, schema validation, audit log integrity, deterministic reproduction of state metadata given the same input — **the first three are covered** (124 unit tests, 3 `requires_model` integration tests); **determinism under repeated identical input is not yet tested** and remains open
+- [x] Test suite covering: API compatibility, schema validation, audit log integrity, deterministic reproduction of state metadata given the same input — 133 unit tests plus 6 `requires_model` integration tests; determinism is covered by `tests/integration/test_determinism.py`, which asserts that greedy decoding reproduces both the response text and the per-token entropy/margin series, with a negative control so a stubbed pipeline cannot pass trivially
 - [ ] Documentation: deployment guide, calibration guide, schema reference — deployment and calibration walkthroughs live in the README; **a standalone schema reference is still outstanding** (the canonical `epistemic_state.schema.json` is committed but undocumented prose-side)
 
 ---
