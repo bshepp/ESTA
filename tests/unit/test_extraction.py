@@ -239,7 +239,12 @@ def test_debug_info_contains_raw_series() -> None:
         refusal_layer=14,
         calibration=cal,
     )
-    assert set(debug.keys()) == {"raw_entropies", "raw_margins", "raw_projections"}
+    assert set(debug.keys()) == {
+        "raw_entropies",
+        "raw_margins",
+        "raw_top_logprobs",
+        "raw_projections",
+    }
     assert len(debug["raw_entropies"]) == 2
     assert len(debug["raw_margins"]) == 2
     assert debug["raw_projections"] == [0.5, 1.0]
@@ -259,6 +264,7 @@ def test_empty_inputs_produce_zero_metrics() -> None:
     assert conf.entropy_spike_count == 0
     assert safety.calibrated_pressure == "uncalibrated"
     assert debug["raw_entropies"] == []
+    assert debug["raw_top_logprobs"] == []
     assert debug["raw_projections"] == []
 
 
@@ -312,3 +318,41 @@ def test_probe_loaded_and_calibrated_emits_real_label() -> None:
     assert calib.calibration_id == "abc123def456"
     assert safety.calibrated_pressure == "high"           # 1.9 >= pressure_moderate 1.5
     assert safety.refusal_projection_max == pytest.approx(1.9)
+
+
+def test_debug_info_exposes_per_token_top_logprob() -> None:
+    """Needed for the constrained-answer confidence measure; entropy cannot recover it."""
+    import numpy as np
+
+    from esta.calibration import Calibration
+
+    a = np.log(np.array([0.7, 0.2, 0.07, 0.03]))
+    b = np.log(np.array([0.6, 0.3, 0.07, 0.03]))
+
+    _, _, _, debug = extract_metrics(
+        token_log_probs=[a, b],
+        projections=[],
+        probe_loaded=False,
+        refusal_layer=14,
+        calibration=Calibration.uncalibrated(),
+    )
+
+    tops = debug["raw_top_logprobs"]
+    assert len(tops) == 2
+    assert tops[0] == pytest.approx(float(np.max(a)))
+    assert tops[1] == pytest.approx(float(np.max(b)))
+    # Round-trips to the probability the model put on its chosen token.
+    assert float(np.exp(tops[0])) == pytest.approx(0.7)
+
+
+def test_top_logprob_list_is_empty_for_empty_generation() -> None:
+    from esta.calibration import Calibration
+
+    _, _, _, debug = extract_metrics(
+        token_log_probs=[],
+        projections=[],
+        probe_loaded=False,
+        refusal_layer=14,
+        calibration=Calibration.uncalibrated(),
+    )
+    assert debug["raw_top_logprobs"] == []

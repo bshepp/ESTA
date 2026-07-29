@@ -63,10 +63,15 @@ def extract_metrics(
     """
     entropies: list[float] = []
     margins: list[float] = []
+    top_log_probs: list[float] = []
     for lp in token_log_probs:
         e, m = token_entropy_and_margin(lp)
         entropies.append(e)
         margins.append(m)
+        # The probability mass the model placed on the token it chose.
+        # Not recoverable from entropy, and needed by the performed-uncertainty
+        # analysis to score confidence under a constrained answer.
+        top_log_probs.append(float(np.max(lp)))
 
     confidence = aggregate_confidence(
         entropies,
@@ -110,6 +115,7 @@ def extract_metrics(
     debug_info: dict[str, Any] = {
         "raw_entropies": entropies,
         "raw_margins": margins,
+        "raw_top_logprobs": top_log_probs,
         "raw_projections": list(projections),
     }
     return confidence, safety, calibration_info, debug_info
