@@ -39,6 +39,7 @@ Produce a calibration, then check what the refusal probe is actually responding 
 ```bash
 python -m esta.scripts.calibrate --model Qwen/Qwen2.5-7B-Instruct --refusal-direction data/refusal_direction.pt --refusal-layer 14 --output data/calibration.json
 python -m esta.scripts.analyze_dual_use --model Qwen/Qwen2.5-7B-Instruct --refusal-direction data/refusal_direction.pt --refusal-layer 14 --calibration data/calibration.json --output data/dual_use_analysis.json
+python -m esta.scripts.analyze_performed_uncertainty --model Qwen/Qwen2.5-7B-Instruct --output data/performed_uncertainty_analysis.json
 ```
 
 ## Architecture: the torch / no-torch boundary
@@ -49,8 +50,8 @@ and torch is quarantined behind the inference layer:
 
 - **Torch-free (must stay importable without torch):** `esta.extraction`, `esta.calibration`, `esta.confidence.metrics`,
   `esta.probes.thresholds`, `esta.schema.*`, `esta.audit.logger`, and everything above `main()` in
-  `esta.scripts.calibrate` and `esta.scripts.analyze_dual_use` (both import torch *inside* `main()`,
-  so the modules themselves stay CI-importable).
+  `esta.scripts.calibrate`, `esta.scripts.analyze_dual_use`, and `esta.scripts.analyze_performed_uncertainty`
+  (all import torch *inside* `main()`, so the modules themselves stay CI-importable).
 - **Torch-dependent:** `esta.inference.*` (`generation`, `hooks`, `model_state`),
   `esta.probes.refusal`, `esta.api.server`, `esta.scripts.extract_refusal_direction`.
 
