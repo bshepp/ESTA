@@ -123,7 +123,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   }'
 ```
 
-The response is OpenAI-compatible with an additional `epistemic_state` field. Standard OpenAI clients ignore the extra field. ESTA-aware clients use it.
+The response is OpenAI-compatible with an additional `epistemic_state` field. Standard OpenAI clients ignore the extra field. ESTA-aware clients use it. Every field is documented in the [schema reference](docs/SCHEMA.md).
 
 The server also exposes `GET /health` and a minimal OpenAI-compatible `GET /v1/models` for client discovery.
 

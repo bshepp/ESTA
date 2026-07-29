@@ -189,7 +189,7 @@ Add a `?return_activations=true` query parameter (off by default) for research/d
 - [x] Audit logger with integrity hashing — SHA-256 chain, daily rotation, `verify_chain()`
 - [x] Calibration script that produces percentile cutoffs from a validation set — plus a 306-prompt validation corpus and three-way probe-class pooling
 - [x] Test suite covering: API compatibility, schema validation, audit log integrity, deterministic reproduction of state metadata given the same input — 133 unit tests plus 6 `requires_model` integration tests; determinism is covered by `tests/integration/test_determinism.py`, which asserts that greedy decoding reproduces both the response text and the per-token entropy/margin series, with a negative control so a stubbed pipeline cannot pass trivially
-- [ ] Documentation: deployment guide, calibration guide, schema reference — deployment and calibration walkthroughs live in the README; **a standalone schema reference is still outstanding** (the canonical `epistemic_state.schema.json` is committed but undocumented prose-side)
+- [x] Documentation: deployment guide, calibration guide, schema reference — deployment and calibration walkthroughs live in the README; the field-by-field prose contract is `docs/SCHEMA.md`, kept in step with the models by `tests/unit/test_schema_reference.py`
 
 ---
 

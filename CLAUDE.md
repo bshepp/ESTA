@@ -71,7 +71,9 @@ with the record also written to the audit log.
   and must match the pydantic models. Any change to `schema/epistemic_state.py` requires
   `python -m esta.scripts.dump_schema` + committing the regenerated JSON, or
   `tests/unit/test_schema_drift.py` fails. Adding fields also requires bumping `SCHEMA_VERSION`
-  (Phase 2 takes it to `0.2.0`) and a migration note.
+  (Phase 2 takes it to `0.2.0`) and a migration note. The prose contract is `docs/SCHEMA.md`,
+  guarded separately by `tests/unit/test_schema_reference.py` — a new field must be documented
+  there too, or that test fails.
 - **Audit integrity.** `audit/logger.py` hash-chains JSONL records (SHA-256, daily rotation,
   `verify_chain()`). The chain is *locally verifiable only* — this is a documented limitation, not
   a bug to "fix" by adding local-only hardening; external anchoring is deferred to Phase 3.

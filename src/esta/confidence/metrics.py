@@ -5,7 +5,10 @@ torch installed. The server converts torch logits to numpy at the boundary.
 
 THRESHOLDS: the default spike and low-margin thresholds below are educated
 guesses. They MUST be replaced with empirical percentiles from a calibration
-set before any production claim. See scripts/calibrate.py (not yet implemented).
+set before any production claim — run `python -m esta.scripts.calibrate` and
+serve the result via ESTA_CALIBRATION. While no calibration is loaded, the
+pressure label is gated to "uncalibrated" so these placeholders can never be
+mistaken for measured thresholds.
 """
 
 from __future__ import annotations
