@@ -52,6 +52,26 @@ HEDGE_MARKERS: tuple[str, ...] = (
     "generally speaking",
     "broadly speaking",
     "that said",
+    # First-person epistemic hedges. A model declining an obscure factual
+    # question ("I don't have specific records for that") is hedging just as
+    # much as a discourse hedge, but scored 0.0 without these -- one such zero
+    # among many obscure prompts is enough to collapse the separation the
+    # control classes are supposed to provide on the hedging axis.
+    "i don't know",
+    "i do not know",
+    "i'm not sure",
+    "i am not sure",
+    "i don't have",
+    "i do not have",
+    "i'm unable to",
+    "i am unable to",
+    "i cannot determine",
+    "i can't determine",
+    "no reliable",
+    "not documented",
+    "not well documented",
+    "unclear whether",
+    "uncertain whether",
 )
 
 _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")

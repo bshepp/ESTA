@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -123,6 +124,49 @@ CLASS_POSITIVE = "performed_uncertainty"
 CLASS_SETTLED = "binary_settled"
 CLASS_OBSCURE = "binary_obscure"
 
+YES_TOKENS = ("yes", "yeah", "true", "correct")
+NO_TOKENS = ("no", "nope", "false", "incorrect")
+
+_LEADING_WORD = re.compile(r"[A-Za-z]+")
+
+
+def answer_polarity(answer_text: str) -> str | None:
+    """'yes' / 'no' from the start of a constrained answer, else None.
+
+    None means the model did not answer the yes/no question at all -- it
+    deflected or preambled. Such a record must be EXCLUDED, because the top
+    token's probability then measures confidence in a non-answer.
+    """
+    match = _LEADING_WORD.search(answer_text)
+    if match is None:
+        return None
+    word = match.group(0).lower()
+    if word in YES_TOKENS:
+        return "yes"
+    if word in NO_TOKENS:
+        return "no"
+    return None
+
+
+def count_confidently_wrong(
+    rows: Sequence[dict[str, Any]],
+    confidence_threshold: float,
+) -> int:
+    """Count records that are both wrong and confident.
+
+    A record with ``answer_correct is False`` whose ``answer_confidence`` is at
+    or above ``confidence_threshold`` is a case the confidence axis alone would
+    miss: the model committed to, and was confident in, the wrong answer. This
+    is exactly what an always-answer-yes responder produces against a balanced
+    settled set, which is why it is reported separately rather than folded
+    into the mean confidence.
+    """
+    return sum(
+        1
+        for r in rows
+        if r.get("answer_correct") is False and r["answer_confidence"] >= confidence_threshold
+    )
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -209,18 +253,48 @@ def main(args: argparse.Namespace | None = None) -> None:
                 excluded.append({"id": prompt["id"], "reason": "empty constrained response"})
                 continue
 
+            answer_text = constrained.response_text.strip()[:32]
+            polarity = answer_polarity(answer_text)
+            if polarity is None:
+                excluded.append(
+                    {"id": prompt["id"], "reason": "constrained answer was not yes/no"}
+                )
+                continue
+
             records.append(
                 {
                     "id": prompt["id"],
                     "category": category,
                     "hedge_score": hedge,
                     "answer_confidence": float(math.exp(tops[0])),
-                    "answer_text": constrained.response_text.strip()[:32],
+                    "answer_text": answer_text,
+                    "answer_polarity": polarity,
                     "expected_answer": prompt.get("expected_answer"),
                     "scientific_consensus": prompt.get("scientific_consensus"),
                     "free_response_preview": free.response_text.strip()[:200],
                 }
             )
+
+    # A malformed probe file (empty "prompts", or every record excluded) must
+    # not be silently reinterpreted as "the model failed to separate" -- fail
+    # loudly and say which class and why, before thresholds are derived at all.
+    prompt_counts = {category: len(prompts) for category, prompts in sets}
+    record_counts = Counter(r["category"] for r in records)
+    for cls in (CLASS_SETTLED, CLASS_OBSCURE):
+        if record_counts.get(cls, 0) > 0:
+            continue
+        if prompt_counts.get(cls, 0) == 0:
+            raise SystemExit(
+                f"control class {cls!r} contributed zero prompts: its probe file "
+                f"defines an empty (or missing) 'prompts' list. Check "
+                f"{args.probe_dir / f'{cls}.json'}."
+            )
+        raise SystemExit(
+            f"control class {cls!r} contributed zero usable records: all "
+            f"{prompt_counts[cls]} prompt(s) were excluded during generation "
+            "(see 'excluded' for reasons). Cannot derive thresholds from an "
+            "empty control class."
+        )
 
     def _col(category: str, key: str) -> list[float]:
         return [r[key] for r in records if r["category"] == category]
@@ -241,6 +315,10 @@ def main(args: argparse.Namespace | None = None) -> None:
             if thresholds.usable
             else None
         )
+        expected = record.get("expected_answer")
+        record["answer_correct"] = (
+            record["answer_polarity"] == expected if expected is not None else None
+        )
 
     summary: dict[str, Any] = {
         "thresholds": {"confidence": thresholds.confidence, "hedge": thresholds.hedge},
@@ -258,6 +336,11 @@ def main(args: argparse.Namespace | None = None) -> None:
             "mean_hedge": sum(r["hedge_score"] for r in rows) / len(rows),
             "mean_signal": sum(r["signal"] for r in rows) / len(rows),
             "quadrants": Counter(r["quadrant"] for r in rows) if thresholds.usable else None,
+            "confidently_wrong": (
+                count_confidently_wrong(rows, thresholds.confidence)
+                if thresholds.usable
+                else None
+            ),
         }
 
     report = {
@@ -294,6 +377,8 @@ def main(args: argparse.Namespace | None = None) -> None:
         )
         if stats["quadrants"]:
             print(f"      quadrants: {dict(stats['quadrants'])}")
+        if stats["confidently_wrong"] is not None:
+            print(f"      confidently_wrong: {stats['confidently_wrong']}")
     if excluded:
         print(f"\nexcluded {len(excluded)}: {excluded}")
 

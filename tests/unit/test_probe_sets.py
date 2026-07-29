@@ -35,6 +35,11 @@ def obscure() -> dict:
     return _load("binary_obscure.json")
 
 
+@pytest.fixture(scope="module")
+def positive() -> dict:
+    return _load("performed_uncertainty.json", VALIDATION_DIR)
+
+
 def test_both_sets_have_fifty_unique_prompts(settled: dict, obscure: dict) -> None:
     for data in (settled, obscure):
         prompts = data["prompts"]
@@ -52,12 +57,25 @@ def test_every_prompt_is_binary_form(settled: dict, obscure: dict) -> None:
             assert BINARY_OPENER.match(p["text"]), f"{p['id']} is not yes/no-shaped"
 
 
+def test_positive_class_is_also_binary_form(positive: dict) -> None:
+    """The controls only control for form if the positive class matches it too.
+
+    An unrelated edit to performed_uncertainty.json (which also feeds Phase 1
+    calibration) could silently drift it away from yes/no form and
+    reintroduce the confound the probe sets exist to remove.
+    """
+    prompts = positive["prompts"]
+    assert len(prompts) == 50
+    for p in prompts:
+        assert BINARY_OPENER.match(p["text"]), f"{p['id']} is not yes/no-shaped"
+
+
 def test_settled_answers_are_balanced(settled: dict) -> None:
     """An all-yes control is passed by a model that always answers yes."""
     answers = [p["expected_answer"] for p in settled["prompts"]]
     assert set(answers) == {"yes", "no"}
     yes = answers.count("yes")
-    assert 20 <= yes <= 30, f"yes/no imbalance: {yes} yes of {len(answers)}"
+    assert yes == 25, f"yes/no imbalance: {yes} yes of {len(answers)}"
 
 
 def test_obscure_set_claims_no_ground_truth(obscure: dict) -> None:

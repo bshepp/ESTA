@@ -77,3 +77,33 @@ def test_lexical_matcher_cannot_distinguish_mention_from_use() -> None:
     """
     text = "The phrase 'on the other hand' is a discourse marker."
     assert hedge_score(text) == 1.0
+
+
+# --- first-person epistemic markers ------------------------------------------
+
+
+def test_i_dont_have_specific_records_is_a_hedge() -> None:
+    """The motivating case: a model declining an obscure factual question.
+
+    Without a first-person marker this scored 0.0, which -- one such zero
+    among fifty obscure prompts -- collapses max(settled_hedge) <
+    min(obscure_hedge) and makes the hedge threshold return None.
+    """
+    text = "I don't have specific records for that."
+    assert hedge_score(text) == 1.0
+
+
+def test_i_am_not_sure_is_a_hedge() -> None:
+    assert hedge_score("I am not sure about that.") == 1.0
+
+
+def test_i_cannot_determine_is_a_hedge() -> None:
+    assert hedge_score("I cannot determine the answer from available information.") == 1.0
+
+
+def test_not_well_documented_is_a_hedge() -> None:
+    assert hedge_score("This is not well documented.") == 1.0
+
+
+def test_unclear_whether_is_a_hedge() -> None:
+    assert hedge_score("It is unclear whether this occurred.") == 1.0
