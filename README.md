@@ -99,6 +99,30 @@ python -m esta.scripts.analyze_dual_use \
 
 It pairs each defensive prompt ("how do I *detect* ransomware") against its offensive counterpart on the same topic and reports the per-pair projection delta, matched-control AUCs, behavioral over-refusal, and the false-positive rate a downstream consumer would experience.
 
+### Measure performed uncertainty (optional, research-only)
+
+Detects responses where the model is internally decided but outwardly hedging — the RLHF-rewarded
+pattern described by Sharma et al. (2023). Needs `[model]` but no refusal direction:
+
+```bash
+python -m esta.scripts.analyze_performed_uncertainty \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --output data/performed_uncertainty_analysis.json
+```
+
+Each prompt is generated twice at `temperature=0`: once free-form, scored for hedging with the
+lexical [`hedging.py`](src/esta/hedging.py) marker list, and once with a fixed
+`"Answer with a single word: yes or no."` suffix, whose first-token probability gives a confidence
+estimate sourced independently of the hedging. Performed uncertainty is the conjunction — confident
+under constraint, hedging when free — reported as a 2×2 rather than a single score, so *genuine*
+uncertainty honestly expressed is never counted as the failure.
+
+Both cutoffs are derived from the two form-matched control sets in
+[`data/probe_sets/`](data/probe_sets/), never from the positive class; if a pair of controls does
+not separate on an axis, the run reports that instead of inventing a threshold. This is an offline
+research capability — nothing it measures enters `epistemic_state` until the signal is shown to
+measure what it claims.
+
 ### Run the server
 
 ```bash
@@ -230,6 +254,7 @@ esta/
 │   ├── audit/logger.py                # JSONL + SHA-256 chain
 │   ├── calibration.py                 # Calibration value object + fail-loud loader
 │   ├── extraction.py                  # pure-numpy metric assembly (no torch)
+│   ├── hedging.py                     # lexical hedge score (no torch)
 │   ├── confidence/metrics.py          # entropy / margin aggregation
 │   ├── inference/
 │   │   ├── generation.py              # generate + capture activations
@@ -246,8 +271,10 @@ esta/
 │       ├── extract_refusal_direction.py
 │       ├── calibrate.py               # empirical thresholds from validation_cases/
 │       ├── analyze_dual_use.py        # does the probe track refusal or topic?
+│       ├── analyze_performed_uncertainty.py  # confident-but-hedging detector
 │       └── dump_schema.py             # regenerate the canonical JSON schema
 ├── data/validation_cases/             # known-state prompt sets + curation rules
+├── data/probe_sets/                   # form-matched controls for Phase 2 probes
 ├── tests/
 │   ├── unit/                          # no-model-required, run on every PR
 │   └── integration/                   # requires_model marker; opt-in

@@ -180,8 +180,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--probe-dir", type=Path, default=Path("data/probe_sets"))
     parser.add_argument("--refusal-direction", type=Path, default=None,
-                        help="Optional; unused by this analysis but accepted so the "
-                             "same artifacts can be passed as to the other scripts.")
+                        help="Optional, and normally omitted. Accepted so the same artifacts "
+                             "can be passed as to the other scripts, but if given the probe is "
+                             "loaded and projections are computed on every generation at some "
+                             "cost -- this analysis does not read them.")
     parser.add_argument("--refusal-layer", type=int, default=14)
     parser.add_argument("--output", type=Path, default=Path("data/performed_uncertainty_analysis.json"))
     parser.add_argument("--free-max-tokens", type=int, default=FREE_MAX_TOKENS)
