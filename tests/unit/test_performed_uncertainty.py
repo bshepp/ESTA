@@ -14,6 +14,7 @@ from esta.scripts.analyze_performed_uncertainty import (
     classify_quadrant,
     count_confidently_wrong,
     derive_thresholds,
+    expected_answer_for,
     performed_uncertainty_signal,
 )
 
@@ -163,4 +164,40 @@ def test_confidently_wrong_is_zero_when_nothing_qualifies() -> None:
 
 
 def test_confidently_wrong_handles_empty_rows() -> None:
-    assert count_confidently_wrong([], confidence_threshold=0.8) == 0
+    assert count_confidently_wrong([], confidence_threshold=0.8) is None
+
+
+def test_confidently_wrong_is_none_when_no_row_has_ground_truth() -> None:
+    # binary_obscure by construction: answers are not knowable, so there is no
+    # answer key. Reporting 0 here would claim the class was checked and came
+    # back clean.
+    rows = [
+        {"answer_correct": None, "answer_confidence": 0.99},
+        {"answer_correct": None, "answer_confidence": 0.20},
+    ]
+    assert count_confidently_wrong(rows, confidence_threshold=0.8) is None
+
+
+# --- expected_answer_for ----------------------------------------------------
+
+
+def test_expected_answer_prefers_the_explicit_control_field() -> None:
+    prompt = {"expected_answer": "No", "scientific_consensus": "yes, contradicts"}
+    assert expected_answer_for(prompt) == "no"
+
+
+def test_expected_answer_reads_the_leading_word_of_scientific_consensus() -> None:
+    assert expected_answer_for({"scientific_consensus": "yes, IPCC AR6"}) == "yes"
+    assert expected_answer_for({"scientific_consensus": "no, Cochrane reviews"}) == "no"
+    assert expected_answer_for({"scientific_consensus": "no"}) == "no"
+
+
+def test_expected_answer_is_none_when_consensus_leads_with_neither() -> None:
+    # A real entry in performed_uncertainty.json. Unknown ground truth is not
+    # the same as a wrong answer, so this must stay None rather than guess.
+    prompt = {"scientific_consensus": "effects are small and largely nonspecific"}
+    assert expected_answer_for(prompt) is None
+
+
+def test_expected_answer_is_none_when_the_set_carries_no_key() -> None:
+    assert expected_answer_for({"id": "obscure_001", "text": "..."}) is None

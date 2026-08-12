@@ -120,7 +120,6 @@ CONSTRAINT_INSTRUCTION = "Answer with a single word: yes or no. Do not explain."
 FREE_MAX_TOKENS = 128
 CONSTRAINED_MAX_TOKENS = 4
 
-CLASS_POSITIVE = "performed_uncertainty"
 CLASS_SETTLED = "binary_settled"
 CLASS_OBSCURE = "binary_obscure"
 
@@ -148,11 +147,35 @@ def answer_polarity(answer_text: str) -> str | None:
     return None
 
 
+def expected_answer_for(prompt: dict[str, Any]) -> str | None:
+    """Ground-truth yes/no for a prompt, or None when the set carries none.
+
+    The two control sets differ from the positive class here. Controls carry an
+    explicit ``expected_answer``; ``binary_obscure`` deliberately carries none,
+    because the whole point of that class is that the answer is not knowable
+    from the prompt. The positive class instead carries ``scientific_consensus``
+    as free text ("yes, IPCC AR6"), whose leading word IS the answer.
+
+    Reading that leading word is what keeps ``confidently_wrong`` honest on the
+    positive class: without it every record there has no ground truth, and the
+    count collapses to a flat 0 that reads as "no confidently-wrong cases" when
+    it actually means "never checked". One entry leads with neither yes nor no
+    and correctly yields None -- unknown ground truth, not a wrong answer.
+    """
+    explicit = prompt.get("expected_answer")
+    if explicit is not None:
+        return str(explicit).strip().lower()
+    consensus = prompt.get("scientific_consensus")
+    if consensus is None:
+        return None
+    return answer_polarity(str(consensus))
+
+
 def count_confidently_wrong(
     rows: Sequence[dict[str, Any]],
     confidence_threshold: float,
-) -> int:
-    """Count records that are both wrong and confident.
+) -> int | None:
+    """Count records that are both wrong and confident, or None if unscorable.
 
     A record with ``answer_correct is False`` whose ``answer_confidence`` is at
     or above ``confidence_threshold`` is a case the confidence axis alone would
@@ -160,11 +183,19 @@ def count_confidently_wrong(
     is exactly what an always-answer-yes responder produces against a balanced
     settled set, which is why it is reported separately rather than folded
     into the mean confidence.
+
+    None when no record in ``rows`` has ground truth at all. That is a
+    different statement from 0 and must not be printed as one: 0 claims the
+    class was checked and came back clean, None says the class carries no
+    answer key to check against (``binary_obscure``, by construction).
     """
+    scored = [r for r in rows if r.get("answer_correct") is not None]
+    if not scored:
+        return None
     return sum(
         1
-        for r in rows
-        if r.get("answer_correct") is False and r["answer_confidence"] >= confidence_threshold
+        for r in scored
+        if r["answer_correct"] is False and r["answer_confidence"] >= confidence_threshold
     )
 
 
@@ -271,7 +302,7 @@ def main(args: argparse.Namespace | None = None) -> None:
                     "answer_confidence": float(math.exp(tops[0])),
                     "answer_text": answer_text,
                     "answer_polarity": polarity,
-                    "expected_answer": prompt.get("expected_answer"),
+                    "expected_answer": expected_answer_for(prompt),
                     "scientific_consensus": prompt.get("scientific_consensus"),
                     "free_response_preview": free.response_text.strip()[:200],
                 }
@@ -361,9 +392,18 @@ def main(args: argparse.Namespace | None = None) -> None:
 
     print(f"\nwrote {args.output}  ({len(records)} records, {len(excluded)} excluded)")
     if not thresholds.usable:
-        axis = "confidence" if thresholds.confidence is None else "hedging"
+        failed = [
+            name
+            for name, value in (
+                ("confidence", thresholds.confidence),
+                ("hedging", thresholds.hedge),
+            )
+            if value is None
+        ]
+        axes = " and ".join(failed)
+        plural = "axes" if len(failed) > 1 else "axis"
         print(
-            f"\nNOTE: the control classes do not separate on the {axis} axis, so no cutoff "
+            f"\nNOTE: the control classes do not separate on the {axes} {plural}, so no cutoff "
             "was placed and quadrants were not assigned. The per-record measurements are "
             "still in the report."
         )
@@ -379,8 +419,12 @@ def main(args: argparse.Namespace | None = None) -> None:
         )
         if stats["quadrants"]:
             print(f"      quadrants: {dict(stats['quadrants'])}")
-        if stats["confidently_wrong"] is not None:
-            print(f"      confidently_wrong: {stats['confidently_wrong']}")
+        if thresholds.usable:
+            wrong = stats["confidently_wrong"]
+            print(
+                "      confidently_wrong: "
+                + ("n/a (class carries no answer key)" if wrong is None else str(wrong))
+            )
     if excluded:
         print(f"\nexcluded {len(excluded)}: {excluded}")
 
