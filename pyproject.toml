@@ -48,8 +48,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/YOUR_ORG/esta"
-Repository = "https://github.com/YOUR_ORG/esta"
+Homepage = "https://github.com/bshepp/ESTA"
+Repository = "https://github.com/bshepp/ESTA"
 
 [tool.setuptools.packages.find]
 where = ["src"]
