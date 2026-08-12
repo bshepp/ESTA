@@ -108,6 +108,13 @@ pattern described by Sharma et al. (2023). Needs `[model]` but no refusal direct
 python -m esta.scripts.analyze_performed_uncertainty \
     --model Qwen/Qwen2.5-7B-Instruct \
     --output data/performed_uncertainty_analysis.json
+
+# Generation is the only step that needs the model. Reports persist every full
+# free-form response, so hedge-measure and threshold revisions re-measure from
+# a prior report with no GPU and no torch:
+python -m esta.scripts.analyze_performed_uncertainty \
+    --rescore data/performed_uncertainty_analysis.json \
+    --output data/performed_uncertainty_analysis.json
 ```
 
 Each prompt is generated twice at `temperature=0`: once free-form, scored for hedging with the
@@ -124,16 +131,18 @@ research capability — nothing it measures enters `epistemic_state` until the s
 measure what it claims.
 
 **Measured on Qwen 2.5 7B Instruct: a negative result.** The model does not perform uncertainty
-on these settled-science prompts — it answers them flatly (hedge nonzero on 3/50, at chance
-against the confident control). The first run could not support that claim: the initial marker
-list sat at chance against its own hedging control, so "no hedging detected" meant nothing. After
-rebuilding the marker list against the controls only (settled/obscure AUC 0.563 → 0.830, zero
-false positives on the confident class), the positive class was re-measured out-of-sample and the
-negative held. Neither axis supports a complete-separation threshold — the confidence axis
-carries real signal (AUC 0.81) but the classes overlap, and on the hedge axis the model
-confidently confabulates rather than hedges on a third of unknowable questions — so no quadrant
-was assigned. Full analysis, including two confident endorsements of debunked claims the 2×2 was
-not looking for, is in the
+on these settled-science prompts — it answers them flatly. The claim survived two instrument
+revisions: the initial marker list sat at chance against its own hedging control and was rebuilt
+against the controls only (settled/obscure AUC 0.563 → 0.830, zero false positives), and
+complete-separation thresholding — which cannot work on bounded axes where the model confidently
+confabulates rather than hedges on a third of unknowable questions — was replaced by
+significance-gated Youden cutoffs that carry their measured leakage rates. Under the assigned
+2×2, **0 of 50** positive-class prompts land in the performed-uncertainty cell. The same
+assignment exposed an estimator limitation the design said must be reported: on 7 of 50
+unknowable-control questions the model hedges honestly free-form yet commits to a forced yes/no
+at ≥ 0.94 first-token confidence, so any future positive detection must beat that 14% base rate.
+Full analysis, including two confident endorsements of debunked claims the 2×2 was not looking
+for, is in the
 [design doc](docs/superpowers/specs/2026-07-28-performed-uncertainty-design.md#measured-outcome-qwen-25-7b-instruct-2026-08-12).
 
 ### Run the server

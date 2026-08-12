@@ -16,9 +16,21 @@ occurs, so the gap is zero wherever the probe works and non-zero only where it
 fails. Sourcing the confidence estimate independently of the hedging behaviour
 avoids that, and removes a probe, a labelled corpus, and a version to maintain.
 
-Everything above `main()` is torch-free and unit-tested; `main()` imports torch
-inside the function body so this module stays importable in CI without
-[model].
+THRESHOLDS. Cutoffs are derived from the two control classes only, never the
+positive class. The first 7B run showed complete-separation (max-margin)
+thresholding is the wrong rule for axes bounded in [0, 1] — one overlapping
+prompt out of fifty destroys the empty band — so each cutoff is now the
+balanced-accuracy-optimal (Youden) point between the controls, gated on the
+controls rank-separating significantly, and reported WITH its measured leakage
+rates rather than presented as clean. Under complete separation the rule
+reduces exactly to max-margin: the empty band is the unique gap with perfect
+balanced accuracy and its midpoint is the chosen cutoff.
+
+Everything above `main()` is torch-free and unit-tested; the model-run path
+imports torch inside the function body so this module stays importable in CI
+without [model]. Generation is the only step that needs a model at all —
+`--rescore` reruns hedge scoring, thresholds, and quadrants from a prior
+report's persisted responses with no GPU.
 """
 
 from __future__ import annotations
@@ -29,12 +41,13 @@ import math
 import re
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from esta.scripts.calibrate import max_margin_threshold
+from esta.hedging import hedge_score
+from esta.scripts.analyze_dual_use import separation_auc
 
 QUADRANT_PERFORMED = "performed_uncertainty"
 QUADRANT_DIRECT = "confident_direct"
@@ -42,17 +55,132 @@ QUADRANT_GENUINE = "genuine_uncertainty"
 QUADRANT_OVERCLAIM = "overclaiming"
 
 
-@dataclass(frozen=True)
-class Thresholds:
-    """Cutoffs for the confidence and hedging axes.
+# Conventional level, applied one-sided (the design fixes each axis's
+# direction in advance). The gate answers only "is the ranking better than
+# chance"; how GOOD the cutoff is stays a separately reported number, not a
+# pass/fail folded into the gate.
+SIGNIFICANCE_ALPHA = 0.05
 
-    Either may be None when its two control classes overlap, meaning no empty
-    band exists to place a cutoff in. A run reports that rather than falling
-    back to an invented number.
+
+@dataclass(frozen=True)
+class AxisCut:
+    """A cutoff between two control classes, carrying its measured quality.
+
+    A Youden cutoff exists whenever the controls rank-separate, including when
+    they overlap — so unlike a max-margin threshold it MUST travel with its
+    error rates, or an overlapping axis would be presented as a clean one.
+    ``lower_exceed`` is the fraction of the lower control at/above the cutoff
+    and ``upper_below`` the fraction of the upper control under it: the
+    leakage a quadrant assignment inherits.
     """
 
-    confidence: float | None
-    hedge: float | None
+    cutoff: float
+    auc: float
+    balanced_accuracy: float
+    lower_exceed: float
+    upper_below: float
+    p_value: float
+
+
+def mann_whitney_p(lower: Sequence[float], upper: Sequence[float]) -> float:
+    """One-sided p-value that ``upper`` ranks above ``lower`` (Mann-Whitney U).
+
+    Tie-corrected normal approximation with continuity correction — ties
+    dominate the hedge axis (most scores are exactly 0), so the uncorrected
+    variance would overstate significance. Pure python on ~50-element classes;
+    no scipy. Returns 1.0 when every pooled value is identical: no ordering
+    information exists.
+    """
+    n_lower, n_upper = len(lower), len(upper)
+    if n_lower == 0 or n_upper == 0:
+        raise ValueError("both classes must be non-empty")
+    pooled = sorted([(v, False) for v in lower] + [(v, True) for v in upper])
+    total = n_lower + n_upper
+    rank_sum_upper = 0.0
+    tie_correction = 0.0
+    i = 0
+    while i < total:
+        j = i
+        while j + 1 < total and pooled[j + 1][0] == pooled[i][0]:
+            j += 1
+        average_rank = (i + j + 2) / 2.0  # ranks are 1-based
+        group = j - i + 1
+        tie_correction += group**3 - group
+        rank_sum_upper += average_rank * sum(1 for k in range(i, j + 1) if pooled[k][1])
+        i = j + 1
+    u_upper = rank_sum_upper - n_upper * (n_upper + 1) / 2.0
+    mean_u = n_lower * n_upper / 2.0
+    variance = (n_lower * n_upper / 12.0) * (
+        (total + 1) - tie_correction / (total * (total - 1))
+    )
+    if variance <= 0:
+        return 1.0
+    z = (u_upper - mean_u - 0.5) / math.sqrt(variance)
+    return 0.5 * math.erfc(z / math.sqrt(2.0))
+
+
+def youden_cutoff(
+    lower: Sequence[float],
+    upper: Sequence[float],
+    *,
+    alpha: float = SIGNIFICANCE_ALPHA,
+) -> AxisCut | None:
+    """Balanced-accuracy-optimal cutoff between two control classes, or None.
+
+    None when the controls do not rank-separate significantly: the in-sample
+    Youden J is almost always positive even for identical distributions (the
+    cutoff overfits the noise), so the significance gate — not the existence
+    of a maximizing point — is what refuses to invent a threshold.
+
+    Candidates are the midpoints between consecutive distinct pooled values.
+    The one maximizing J = TPR + TNR - 1 wins; among J-ties the widest gap is
+    taken (then the lowest cutoff, for determinism). Under complete separation
+    the empty band is the unique gap with J = 1 and its midpoint is returned —
+    exactly `esta.scripts.calibrate.max_margin_threshold`, which this rule
+    supersedes on the bounded axes and contains as the special case.
+    """
+    if not len(lower) or not len(upper):
+        return None
+    p_value = mann_whitney_p(lower, upper)
+    if p_value > alpha:
+        return None
+    values = sorted(set(lower) | set(upper))
+    if len(values) < 2:  # unreachable past the gate, but explicit
+        return None
+    best_key: tuple[float, float, float] | None = None
+    best: tuple[float, float, float] | None = None
+    for low_val, high_val in zip(values, values[1:], strict=False):
+        cutoff = (low_val + high_val) / 2.0
+        true_positive = sum(1 for v in upper if v >= cutoff) / len(upper)
+        true_negative = sum(1 for v in lower if v < cutoff) / len(lower)
+        j = true_positive + true_negative - 1.0
+        key = (j, high_val - low_val, -cutoff)
+        if best_key is None or key > best_key:
+            best_key = key
+            best = (cutoff, true_positive, true_negative)
+    assert best is not None
+    cutoff, true_positive, true_negative = best
+    return AxisCut(
+        cutoff=cutoff,
+        auc=separation_auc(list(upper), list(lower)),
+        balanced_accuracy=(true_positive + true_negative) / 2.0,
+        lower_exceed=1.0 - true_negative,
+        upper_below=1.0 - true_positive,
+        p_value=p_value,
+    )
+
+
+@dataclass(frozen=True)
+class Thresholds:
+    """Per-axis cutoffs, each carrying its measured quality.
+
+    Either axis may be None when its two control classes do not rank-separate
+    significantly — there is then no defensible cutoff, and a run reports that
+    rather than falling back to an invented number.
+    """
+
+    confidence: AxisCut | None
+    hedge: AxisCut | None
 
     @property
     def usable(self) -> bool:
@@ -66,7 +194,7 @@ def derive_thresholds(
     settled_hedge: Sequence[float],
     obscure_hedge: Sequence[float],
 ) -> Thresholds:
-    """Place each cutoff in the empty band between the two CONTROL classes.
+    """Place each cutoff between the two CONTROL classes.
 
     The positive class is deliberately absent from this computation. Letting it
     influence a threshold would make the headline result a fitted objective
@@ -78,8 +206,8 @@ def derive_thresholds(
     axis the roles reverse: settled has no reason to hedge, obscure does.
     """
     return Thresholds(
-        confidence=max_margin_threshold(obscure_confidence, settled_confidence),
-        hedge=max_margin_threshold(settled_hedge, obscure_hedge),
+        confidence=youden_cutoff(obscure_confidence, settled_confidence),
+        hedge=youden_cutoff(settled_hedge, obscure_hedge),
     )
 
 
@@ -105,8 +233,8 @@ def classify_quadrant(confidence: float, hedge: float, thresholds: Thresholds) -
             "control classes are not separable on at least one axis; "
             "no defensible cutoff exists, so records cannot be classified"
         )
-    confident = confidence >= thresholds.confidence
-    hedged = hedge >= thresholds.hedge
+    confident = confidence >= thresholds.confidence.cutoff
+    hedged = hedge >= thresholds.hedge.cutoff
     if confident and hedged:
         return QUADRANT_PERFORMED
     if confident:
@@ -218,6 +346,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--refusal-layer", type=int, default=14)
     parser.add_argument("--output", type=Path, default=Path("data/performed_uncertainty_analysis.json"))
     parser.add_argument("--free-max-tokens", type=int, default=FREE_MAX_TOKENS)
+    parser.add_argument(
+        "--rescore", type=Path, default=None, metavar="PRIOR_REPORT",
+        help="Recompute hedge scores, thresholds, and quadrants from a prior "
+             "report's persisted free-form responses instead of generating. "
+             "Needs no model, no GPU, and no torch; generation is deterministic "
+             "at temperature 0, so only instrument and threshold revisions "
+             "change the result. --model/--positive-set/--probe-dir are ignored.")
     return parser.parse_args(argv)
 
 
@@ -226,16 +361,167 @@ def _load_prompts(path: Path) -> tuple[str, list[dict[str, Any]]]:
     return data.get("category", path.stem), data.get("prompts", [])
 
 
-def main(args: argparse.Namespace | None = None) -> None:
+def build_report(
+    records: list[dict[str, Any]],
+    excluded: list[dict[str, str]],
+    provenance: dict[str, Any],
+) -> dict[str, Any]:
+    """Derive thresholds, assign quadrants, and assemble the report.
+
+    Torch-free on purpose: everything after generation is pure post-processing
+    over the persisted records, which is what makes --rescore possible.
+    """
+
+    def _col(category: str, key: str) -> list[float]:
+        return [r[key] for r in records if r["category"] == category]
+
+    thresholds = derive_thresholds(
+        obscure_confidence=_col(CLASS_OBSCURE, "answer_confidence"),
+        settled_confidence=_col(CLASS_SETTLED, "answer_confidence"),
+        settled_hedge=_col(CLASS_SETTLED, "hedge_score"),
+        obscure_hedge=_col(CLASS_OBSCURE, "hedge_score"),
+    )
+
+    for record in records:
+        record["signal"] = performed_uncertainty_signal(
+            record["answer_confidence"], record["hedge_score"]
+        )
+        record["quadrant"] = (
+            classify_quadrant(record["answer_confidence"], record["hedge_score"], thresholds)
+            if thresholds.usable
+            else None
+        )
+        expected = record.get("expected_answer")
+        record["answer_correct"] = (
+            record["answer_polarity"] == expected if expected is not None else None
+        )
+
+    summary: dict[str, Any] = {
+        "threshold_policy": "youden-rank",
+        "thresholds": {
+            "confidence": asdict(thresholds.confidence) if thresholds.confidence else None,
+            "hedge": asdict(thresholds.hedge) if thresholds.hedge else None,
+        },
+        "thresholds_usable": thresholds.usable,
+        "excluded": excluded,
+        "by_category": {},
+    }
+    for category in dict.fromkeys(r["category"] for r in records):
+        rows = [r for r in records if r["category"] == category]
+        summary["by_category"][category] = {
+            "n": len(rows),
+            "mean_confidence": sum(r["answer_confidence"] for r in rows) / len(rows),
+            "mean_hedge": sum(r["hedge_score"] for r in rows) / len(rows),
+            "mean_signal": sum(r["signal"] for r in rows) / len(rows),
+            "quadrants": Counter(r["quadrant"] for r in rows) if thresholds.usable else None,
+            "confidently_wrong": (
+                count_confidently_wrong(rows, thresholds.confidence.cutoff)
+                if thresholds.usable
+                else None
+            ),
+        }
+
+    return {"provenance": provenance, "summary": summary, "records": records}
+
+
+def print_report(report: dict[str, Any], output: Path) -> None:
+    summary = report["summary"]
+    excluded = summary["excluded"]
+    print(f"\nwrote {output}  ({len(report['records'])} records, {len(excluded)} excluded)")
+
+    cuts = summary["thresholds"]
+    failed = [
+        name
+        for name, cut in (("confidence", cuts["confidence"]), ("hedging", cuts["hedge"]))
+        if cut is None
+    ]
+    if failed:
+        axes = " and ".join(failed)
+        plural = "axes" if len(failed) > 1 else "axis"
+        print(
+            f"\nNOTE: the control classes do not rank-separate better than chance on the "
+            f"{axes} {plural}, so no cutoff was placed and quadrants were not assigned. "
+            "The per-record measurements are still in the report."
+        )
+    placed = [(n, c) for n, c in (("confidence", cuts["confidence"]), ("hedge", cuts["hedge"])) if c]
+    if placed:
+        print("\nthresholds (Youden between the controls; leakage is the price of overlap):")
+        for name, cut in placed:
+            print(
+                f"  {name:10} >= {cut['cutoff']:.3f}  "
+                f"(AUC {cut['auc']:.2f}, balanced acc {cut['balanced_accuracy']:.2f}, "
+                f"lower class at/above {cut['lower_exceed']:.0%}, "
+                f"upper class below {cut['upper_below']:.0%}, p={cut['p_value']:.1e})"
+            )
+
+    print("\nby category:")
+    for category, stats in summary["by_category"].items():
+        print(
+            f"  {category:24} n={stats['n']:3}  conf={stats['mean_confidence']:.3f}  "
+            f"hedge={stats['mean_hedge']:.3f}  signal={stats['mean_signal']:.3f}"
+        )
+        if stats["quadrants"]:
+            print(f"      quadrants: {dict(stats['quadrants'])}")
+        if summary["thresholds_usable"]:
+            wrong = stats["confidently_wrong"]
+            print(
+                "      confidently_wrong: "
+                + ("n/a (class carries no answer key)" if wrong is None else str(wrong))
+            )
+    if excluded:
+        print(f"\nexcluded {len(excluded)}: {excluded}")
+
+
+def _load_rescore(
+    path: Path,
+) -> tuple[list[dict[str, Any]], list[dict[str, str]], dict[str, Any]]:
+    """Rebuild the record set from a prior report's persisted responses.
+
+    Generation is the only step of this analysis that needs a model; hedge
+    scoring, thresholds, and quadrants are post-processing. Rescoring rereads
+    the persisted free-form text so instrument and thresholding revisions
+    re-measure at zero GPU cost.
+    """
+    prior = json.loads(path.read_text(encoding="utf-8"))
+    records: list[dict[str, Any]] = prior.get("records", [])
+    if not records:
+        raise SystemExit(f"{path} contains no records to rescore.")
+    missing = [r.get("id", "?") for r in records if "free_response" not in r]
+    if missing:
+        raise SystemExit(
+            f"{len(missing)} record(s) in {path} lack the full 'free_response' text "
+            "(early runs persisted only a 200-char preview); hedge scores cannot be "
+            "recomputed from a truncation. Re-run the model pass to regenerate."
+        )
+    for r in records:
+        r["hedge_score"] = hedge_score(r["free_response"])
+    kept = [r for r in records if r["hedge_score"] is not None]
+    excluded = list(prior.get("summary", {}).get("excluded", []))
+    excluded += [
+        {"id": r["id"], "reason": "empty free-form response"}
+        for r in records
+        if r["hedge_score"] is None
+    ]
+    for cls in (CLASS_SETTLED, CLASS_OBSCURE):
+        if not any(r["category"] == cls for r in kept):
+            raise SystemExit(
+                f"control class {cls!r} has zero records in {path}; "
+                "cannot derive thresholds from an empty control class."
+            )
+    provenance = dict(prior.get("provenance", {}))
+    provenance["rescored_from"] = str(path)
+    provenance["rescored_at"] = datetime.now(UTC).isoformat()
+    return kept, excluded, provenance
+
+
+def _generate_records(
+    args: argparse.Namespace,
+) -> tuple[list[dict[str, Any]], list[dict[str, str]], dict[str, Any]]:
     # Imported here so the pure layer above stays importable without [model].
     import torch
 
     from esta.calibration import Calibration
-    from esta.hedging import hedge_score
     from esta.inference import GenerationParams, ModelState, generate_with_epistemic_state
-
-    if args is None:
-        args = parse_args()
 
     sets: list[tuple[str, list[dict[str, Any]]]] = [_load_prompts(args.positive_set)]
     for name in (f"{CLASS_SETTLED}.json", f"{CLASS_OBSCURE}.json"):
@@ -333,104 +619,29 @@ def main(args: argparse.Namespace | None = None) -> None:
             "empty control class."
         )
 
-    def _col(category: str, key: str) -> list[float]:
-        return [r[key] for r in records if r["category"] == category]
-
-    thresholds = derive_thresholds(
-        obscure_confidence=_col(CLASS_OBSCURE, "answer_confidence"),
-        settled_confidence=_col(CLASS_SETTLED, "answer_confidence"),
-        settled_hedge=_col(CLASS_SETTLED, "hedge_score"),
-        obscure_hedge=_col(CLASS_OBSCURE, "hedge_score"),
-    )
-
-    for record in records:
-        record["signal"] = performed_uncertainty_signal(
-            record["answer_confidence"], record["hedge_score"]
-        )
-        record["quadrant"] = (
-            classify_quadrant(record["answer_confidence"], record["hedge_score"], thresholds)
-            if thresholds.usable
-            else None
-        )
-        expected = record.get("expected_answer")
-        record["answer_correct"] = (
-            record["answer_polarity"] == expected if expected is not None else None
-        )
-
-    summary: dict[str, Any] = {
-        "thresholds": {"confidence": thresholds.confidence, "hedge": thresholds.hedge},
-        "thresholds_usable": thresholds.usable,
-        "excluded": excluded,
-        "by_category": {},
+    provenance = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "model": args.model,
+        "constraint_instruction": CONSTRAINT_INSTRUCTION,
+        "free_max_tokens": args.free_max_tokens,
+        "constrained_max_tokens": CONSTRAINED_MAX_TOKENS,
     }
-    for category, _ in sets:
-        rows = [r for r in records if r["category"] == category]
-        if not rows:
-            continue
-        summary["by_category"][category] = {
-            "n": len(rows),
-            "mean_confidence": sum(r["answer_confidence"] for r in rows) / len(rows),
-            "mean_hedge": sum(r["hedge_score"] for r in rows) / len(rows),
-            "mean_signal": sum(r["signal"] for r in rows) / len(rows),
-            "quadrants": Counter(r["quadrant"] for r in rows) if thresholds.usable else None,
-            "confidently_wrong": (
-                count_confidently_wrong(rows, thresholds.confidence)
-                if thresholds.usable
-                else None
-            ),
-        }
+    return records, excluded, provenance
 
-    report = {
-        "provenance": {
-            "timestamp": datetime.now(UTC).isoformat(),
-            "model": args.model,
-            "constraint_instruction": CONSTRAINT_INSTRUCTION,
-            "free_max_tokens": args.free_max_tokens,
-            "constrained_max_tokens": CONSTRAINED_MAX_TOKENS,
-        },
-        "summary": summary,
-        "records": records,
-    }
+
+def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = parse_args()
+
+    if args.rescore is not None:
+        records, excluded, provenance = _load_rescore(args.rescore)
+    else:
+        records, excluded, provenance = _generate_records(args)
+
+    report = build_report(records, excluded, provenance)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-    print(f"\nwrote {args.output}  ({len(records)} records, {len(excluded)} excluded)")
-    if not thresholds.usable:
-        failed = [
-            name
-            for name, value in (
-                ("confidence", thresholds.confidence),
-                ("hedging", thresholds.hedge),
-            )
-            if value is None
-        ]
-        axes = " and ".join(failed)
-        plural = "axes" if len(failed) > 1 else "axis"
-        print(
-            f"\nNOTE: the control classes do not separate on the {axes} {plural}, so no cutoff "
-            "was placed and quadrants were not assigned. The per-record measurements are "
-            "still in the report."
-        )
-    else:
-        print(
-            f"\nthresholds: confidence>={thresholds.confidence:.3f}  hedge>={thresholds.hedge:.3f}"
-        )
-    print("\nby category:")
-    for category, stats in summary["by_category"].items():
-        print(
-            f"  {category:24} n={stats['n']:3}  conf={stats['mean_confidence']:.3f}  "
-            f"hedge={stats['mean_hedge']:.3f}  signal={stats['mean_signal']:.3f}"
-        )
-        if stats["quadrants"]:
-            print(f"      quadrants: {dict(stats['quadrants'])}")
-        if thresholds.usable:
-            wrong = stats["confidently_wrong"]
-            print(
-                "      confidently_wrong: "
-                + ("n/a (class carries no answer key)" if wrong is None else str(wrong))
-            )
-    if excluded:
-        print(f"\nexcluded {len(excluded)}: {excluded}")
+    print_report(report, args.output)
 
 
 if __name__ == "__main__":
