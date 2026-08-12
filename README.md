@@ -123,6 +123,16 @@ not separate on an axis, the run reports that instead of inventing a threshold. 
 research capability — nothing it measures enters `epistemic_state` until the signal is shown to
 measure what it claims.
 
+**First 7B run returned a negative result, and it has not been superseded.** On Qwen 2.5 7B
+Instruct neither axis separated, so no cutoff was placed and no quadrant was assigned. The
+confidence axis carries a real signal (AUC 0.81 between the controls) but cannot support a
+complete-separation threshold; the hedge axis sits at chance (AUC 0.56) because the lexical
+marker list scores most responses — including the control built to hedge — at exactly zero. No
+performed uncertainty was detected on the positive class, but an instrument that misses known
+hedges cannot make that evidence of absence. Full analysis, including two confident endorsements
+of debunked claims the 2×2 was not looking for, is in the
+[design doc](docs/superpowers/specs/2026-07-28-performed-uncertainty-design.md#measured-outcome-qwen-25-7b-instruct-2026-08-12).
+
 ### Run the server
 
 ```bash
