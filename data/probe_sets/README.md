@@ -35,18 +35,23 @@ id.
 
 ## How they behaved on Qwen 2.5 7B (2026-08-12)
 
-| Class | mean confidence | mean hedge | answer accuracy |
+| Class | mean confidence | mean hedge (instrument v2) | answer accuracy |
 |---|---|---|---|
-| `binary_settled` | 0.923 | 0.013 | 47/50 |
-| `binary_obscure` | 0.741 | 0.049 | n/a — no answer key by construction |
+| `binary_settled` | 0.923 | 0.000 (0/50 nonzero) | 47/50 |
+| `binary_obscure` | 0.741 | 0.274 (33/50 nonzero) | n/a — no answer key by construction |
 
-**The sets did their job; the hedge instrument did not.** On the confidence axis they bracket as
-intended (AUC 0.81, obscure below settled), which is what a working control pair looks like. On
-the hedging axis they sit at chance (AUC 0.56) — not because the prompts are wrong, but because
-`hedging.py` scores 41 of 50 obscure responses at exactly zero while the model is visibly hedging
-in them ("I would need to look up specific records", "specific details are not publicly
-available"). `binary_obscure` is therefore the validation target for any hedge-measure revision:
-until the control separates, the measure is not ready to be pointed at the positive class.
+**The sets did their job.** On the confidence axis they bracket as intended (AUC 0.81, obscure
+below settled). On the hedging axis the first marker list sat at chance (AUC 0.56), scoring 41 of
+50 obscure responses at zero while the model visibly hedged in them ("I would need to look up
+specific records", "specific details are not publicly available"); rebuilding the list against
+these two classes — deferral phrasings drawn from `binary_obscure`, false positives checked
+against `binary_settled`, the positive class never consulted — brought the pair to AUC 0.830
+with the settled class perfectly clean.
+
+The 17 obscure responses still scoring zero under v2 are genuine: the model **confidently
+confabulates** rather than hedges on them. That is model behaviour the set correctly elicits, and
+it means no hedge instrument can fully separate these classes on this model — a finding, not a
+defect.
 
 The balance rule earned its keep — the model answered obscure prompts 18 yes / 32 no rather than
 defaulting to one polarity, so the confidence numbers are not an artifact of a stuck responder.

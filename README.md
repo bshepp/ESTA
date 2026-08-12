@@ -123,14 +123,17 @@ not separate on an axis, the run reports that instead of inventing a threshold. 
 research capability — nothing it measures enters `epistemic_state` until the signal is shown to
 measure what it claims.
 
-**First 7B run returned a negative result, and it has not been superseded.** On Qwen 2.5 7B
-Instruct neither axis separated, so no cutoff was placed and no quadrant was assigned. The
-confidence axis carries a real signal (AUC 0.81 between the controls) but cannot support a
-complete-separation threshold; the hedge axis sits at chance (AUC 0.56) because the lexical
-marker list scores most responses — including the control built to hedge — at exactly zero. No
-performed uncertainty was detected on the positive class, but an instrument that misses known
-hedges cannot make that evidence of absence. Full analysis, including two confident endorsements
-of debunked claims the 2×2 was not looking for, is in the
+**Measured on Qwen 2.5 7B Instruct: a negative result.** The model does not perform uncertainty
+on these settled-science prompts — it answers them flatly (hedge nonzero on 3/50, at chance
+against the confident control). The first run could not support that claim: the initial marker
+list sat at chance against its own hedging control, so "no hedging detected" meant nothing. After
+rebuilding the marker list against the controls only (settled/obscure AUC 0.563 → 0.830, zero
+false positives on the confident class), the positive class was re-measured out-of-sample and the
+negative held. Neither axis supports a complete-separation threshold — the confidence axis
+carries real signal (AUC 0.81) but the classes overlap, and on the hedge axis the model
+confidently confabulates rather than hedges on a third of unknowable questions — so no quadrant
+was assigned. Full analysis, including two confident endorsements of debunked claims the 2×2 was
+not looking for, is in the
 [design doc](docs/superpowers/specs/2026-07-28-performed-uncertainty-design.md#measured-outcome-qwen-25-7b-instruct-2026-08-12).
 
 ### Run the server

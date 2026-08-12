@@ -35,7 +35,7 @@ def test_unhedged_answer_scores_zero() -> None:
 
 
 def test_fully_hedged_answer_scores_one() -> None:
-    text = "Some argue this is true. On the other hand, it depends."
+    text = "Some argue this is true. Then again, it depends."
     assert hedge_score(text) == 1.0
 
 
@@ -75,7 +75,7 @@ def test_lexical_matcher_cannot_distinguish_mention_from_use() -> None:
     behaviour is a recorded trade-off; if it ever matters, the fix is the LLM
     classifier the spec defers, not a longer regex.
     """
-    text = "The phrase 'on the other hand' is a discourse marker."
+    text = "The phrase 'some argue' is a discourse marker."
     assert hedge_score(text) == 1.0
 
 
@@ -107,3 +107,71 @@ def test_not_well_documented_is_a_hedge() -> None:
 
 def test_unclear_whether_is_a_hedge() -> None:
     assert hedge_score("It is unclear whether this occurred.") == 1.0
+
+
+# --- epistemic deferral (rebuilt against the 7B control corpus, 2026-08-12) --
+#
+# The first marker list sat at chance (AUC 0.563) against binary_obscure
+# because it encoded hedging as discourse moves while the model hedges obscure
+# factual questions as deferral. Each phrasing below is drawn from an actual
+# control response the old list scored 0.0.
+
+
+def test_subjunctive_deferral_is_a_hedge() -> None:
+    """'We WOULD need to consult X' marks inability to answer."""
+    text = "To answer this accurately, I would need to look up specific records from 1962."
+    assert hedge_score(text) == 1.0
+    text = "We would need to refer to historical demographic data for that period."
+    assert hedge_score(text) == 1.0
+
+
+def test_indicative_procedure_is_not_a_hedge() -> None:
+    """'To determine X, we need to look at Y' followed by a flat answer is
+    assertive throat-clearing, not deferral -- the control corpus uses it to
+    preface confident (often confabulated) answers. Only the subjunctive form
+    tracks uncertainty."""
+    text = "To determine this, we need to look at historical records. The cornerstone was laid in 1849."
+    assert hedge_score(text) == 0.0
+
+
+def test_second_person_instructional_need_is_not_a_hedge() -> None:
+    """'You would need a visa' is instruction, not epistemic deferral; the
+    would-need markers are deliberately anchored to first person."""
+    assert hedge_score("To enter the country you would need a visa.") == 0.0
+
+
+def test_unavailable_information_is_a_hedge() -> None:
+    assert hedge_score("Specific details about the committee are not publicly available.") == 1.0
+    assert hedge_score("Detailed statistics are not readily available in public databases.") == 1.0
+
+
+def test_knowledge_cutoff_deferral_is_a_hedge() -> None:
+    text = "As of my last update, the 2025 prize has not been announced."
+    assert hedge_score(text) == 1.0
+
+
+def test_no_defensible_determination_is_a_hedge() -> None:
+    assert hedge_score("It's not possible to definitively state whether this occurred.") == 1.0
+    assert hedge_score("Without specific historical records, we cannot definitively say.") == 1.0
+
+
+def test_deferring_to_an_external_source_is_a_hedge() -> None:
+    assert hedge_score("I would recommend checking the official IMU website.") == 1.0
+
+
+def test_curly_apostrophe_still_matches() -> None:
+    """Markers are written with ASCII apostrophes; model output may use U+2019."""
+    assert hedge_score("I don’t have specific information about that.") == 1.0
+
+
+# --- removed markers ----------------------------------------------------------
+
+
+def test_contrastive_connectives_are_not_markers() -> None:
+    """'On the other hand' and 'worth noting' fired only on confident prose in
+    the 7B control corpus (contrast and emphasis, not uncertainty) and were
+    removed on that evidence."""
+    text = "Water is H2O. Carbon dioxide, on the other hand, is CO2."
+    assert hedge_score(text) == 0.0
+    text = "Diamond is the hardest mineral. It's worth noting the Mohs scale ranks it 10."
+    assert hedge_score(text) == 0.0
