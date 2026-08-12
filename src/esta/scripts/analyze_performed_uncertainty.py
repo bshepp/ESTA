@@ -304,7 +304,11 @@ def main(args: argparse.Namespace | None = None) -> None:
                     "answer_polarity": polarity,
                     "expected_answer": expected_answer_for(prompt),
                     "scientific_consensus": prompt.get("scientific_consensus"),
-                    "free_response_preview": free.response_text.strip()[:200],
+                    # Full text, not a preview. The hedge measure is lexical and
+                    # will need revising against these responses; storing only
+                    # the first 200 chars would make every such revision require
+                    # another GPU run to regenerate the corpus.
+                    "free_response": free.response_text.strip(),
                 }
             )
 
