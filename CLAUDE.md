@@ -40,6 +40,7 @@ Produce a calibration, then check what the refusal probe is actually responding 
 python -m esta.scripts.calibrate --model Qwen/Qwen2.5-7B-Instruct --refusal-direction data/refusal_direction.pt --refusal-layer 14 --output data/calibration.json
 python -m esta.scripts.analyze_dual_use --model Qwen/Qwen2.5-7B-Instruct --refusal-direction data/refusal_direction.pt --refusal-layer 14 --calibration data/calibration.json --output data/dual_use_analysis.json
 python -m esta.scripts.analyze_performed_uncertainty --model Qwen/Qwen2.5-7B-Instruct --output data/performed_uncertainty_analysis.json
+python -m esta.scripts.analyze_response_fidelity --model Qwen/Qwen2.5-7B-Instruct --refusal-direction data/refusal_direction.pt --calibration data/calibration.json --output data/response_fidelity_analysis.json
 ```
 
 ## Architecture: the torch / no-torch boundary
@@ -49,11 +50,11 @@ The single most important structural fact. CI and the default `pytest` run insta
 and torch is quarantined behind the inference layer:
 
 - **Torch-free (must stay importable without torch):** `esta.extraction`, `esta.calibration`, `esta.confidence.metrics`,
-  `esta.probes.thresholds`, `esta.schema.*`, `esta.audit.logger`, `esta.hedging`, and everything except
-  the model-run function in `esta.scripts.calibrate`, `esta.scripts.analyze_dual_use`, and
-  `esta.scripts.analyze_performed_uncertainty` (each imports torch *inside* the function that runs the
-  model — `main()`, or `_generate_records()` in the last — so the modules stay CI-importable;
-  `analyze_performed_uncertainty --rescore` runs entirely torch-free).
+  `esta.probes.thresholds`, `esta.schema.*`, `esta.audit.logger`, `esta.hedging`, `esta.fidelity`, and everything except
+  the model-run function in `esta.scripts.calibrate`, `esta.scripts.analyze_dual_use`, `esta.scripts.analyze_performed_uncertainty`, and
+  `esta.scripts.analyze_response_fidelity` (each imports torch *inside* the function that runs the
+  model — `main()`, or `_generate_records()` in the analyze_performed_uncertainty and analyze_response_fidelity scripts —
+  so the modules stay CI-importable; both --rescore paths run entirely torch-free).
 - **Torch-dependent:** `esta.inference.*` (`generation`, `hooks`, `model_state`),
   `esta.probes.refusal`, `esta.api.server`, `esta.scripts.extract_refusal_direction`.
 

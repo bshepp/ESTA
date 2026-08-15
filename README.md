@@ -145,6 +145,32 @@ Full analysis, including two confident endorsements of debunked claims the 2×2 
 for, is in the
 [design doc](docs/superpowers/specs/2026-07-28-performed-uncertainty-design.md#measured-outcome-qwen-25-7b-instruct-2026-08-12).
 
+### Measure response fidelity (optional, research-only)
+
+Detects responses that answer a quietly substituted question — on-topic and fluent, but
+responsive to a safer adjacent ask than the one posed. Needs `[model]` plus the refusal
+direction and calibration, because the reportable signal is distortion **anchored to** the
+Phase 1 refusal projection; unanchored distortion is reported but never presented as the
+signal:
+
+    python -m esta.scripts.analyze_response_fidelity \
+        --model Qwen/Qwen2.5-7B-Instruct \
+        --refusal-direction data/refusal_direction.pt \
+        --calibration data/calibration.json \
+        --output data/response_fidelity_analysis.json
+
+    # Instrument and threshold revisions re-measure from a prior report - no GPU:
+    python -m esta.scripts.analyze_response_fidelity \
+        --rescore data/response_fidelity_analysis.json \
+        --output data/response_fidelity_analysis.json
+
+The instrument is deterministic term-group coverage curated in
+[`data/probe_sets/`](data/probe_sets/); validation is paired-response convergence against an
+internal null (see the
+[design doc](docs/superpowers/specs/2026-08-12-response-fidelity-design.md)). Offline research
+capability — nothing it measures enters `epistemic_state` until the signal is shown to measure
+what it claims.
+
 ### Run the server
 
 ```bash
@@ -277,6 +303,7 @@ esta/
 │   ├── calibration.py                 # Calibration value object + fail-loud loader
 │   ├── extraction.py                  # pure-numpy metric assembly (no torch)
 │   ├── hedging.py                     # lexical hedge score (no torch)
+│   ├── fidelity.py                    # term-coverage distortion (no torch)
 │   ├── confidence/metrics.py          # entropy / margin aggregation
 │   ├── inference/
 │   │   ├── generation.py              # generate + capture activations
@@ -294,6 +321,7 @@ esta/
 │       ├── calibrate.py               # empirical thresholds from validation_cases/
 │       ├── analyze_dual_use.py        # does the probe track refusal or topic?
 │       ├── analyze_performed_uncertainty.py  # confident-but-hedging detector
+│       ├── analyze_response_fidelity.py  # quiet-reframe detector
 │       └── dump_schema.py             # regenerate the canonical JSON schema
 ├── data/validation_cases/             # known-state prompt sets + curation rules
 ├── data/probe_sets/                   # form-matched controls for Phase 2 probes

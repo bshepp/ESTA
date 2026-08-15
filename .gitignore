@@ -46,6 +46,7 @@ data/calibration_sets/*.json
 data/calibration*.json
 data/dual_use_analysis*.json
 data/performed_uncertainty_analysis*.json
+data/response_fidelity_analysis*.json
 audit_logs/
 /var/log/esta/
 
