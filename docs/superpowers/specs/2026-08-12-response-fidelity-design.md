@@ -188,8 +188,13 @@ is reproducible and `--rescore` is exact.
   `--rescore` end-to-end on synthetic records, including refusal of a missing-projection corpus.
 - **Unit, data:** every prompt in the new sets has non-empty `topic_groups` and
   `operative_groups` (where applicable), unique ids, and — for pairs — a resolvable substitute.
-- **Integration, `requires_model`:** tiny-model smoke asserting both halves generate and the
-  record shape includes the anchor fields.
+- **Integration, `requires_model`:** fake-model tests (the monkeypatch pattern
+  `test_performed_uncertainty_main.py` established; the marker is needed because faking imports
+  `esta.inference`, which imports torch) exercising main()'s routing, the anchor-artifact
+  guards, and the record shape including anchor fields. A *real* tiny-model smoke is
+  deliberately not required here: the anchor needs a refusal direction and a calibration for
+  the tiny model, and producing a genuine calibration means running the full validation corpus
+  — not a smoke test. Real-model validation happens on the GPU box before the measurement run.
 
 ## Out of scope
 
