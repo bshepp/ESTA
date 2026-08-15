@@ -20,7 +20,7 @@ def test_normalize_lowercases_and_collapses_whitespace() -> None:
 
 
 def test_normalize_maps_curly_apostrophe_to_ascii() -> None:
-    assert normalize("don't") == "don't"
+    assert normalize("don’t") == "don't"
 
 
 def test_content_words_drop_stopwords() -> None:
@@ -63,7 +63,9 @@ def test_coverage_is_fraction_of_groups_hit() -> None:
 
 
 def test_any_synonym_in_a_group_counts_once() -> None:
-    groups = [["propagate", "spread", "moves through"]]
+    """Inflected forms are DATA, not code: the group lists 'spreads' explicitly
+    because term matching is exact — no stemming in the instrument, ever."""
+    groups = [["propagate", "propagates", "spread", "spreads", "moves through"]]
     assert group_coverage("It spreads and propagates.", groups) == 1.0
 
 

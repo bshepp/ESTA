@@ -31,7 +31,7 @@ _WORD = re.compile(r"[a-z0-9']+")
 
 def normalize(text: str) -> str:
     """Lowercase, ASCII apostrophes, single spaces. All matching runs on this."""
-    return re.sub(r"\s+", " ", text.lower().replace("'", "'")).strip()
+    return re.sub(r"\s+", " ", text.lower().replace("’", "'")).strip()
 
 
 def content_words(text: str) -> set[str]:
@@ -40,32 +40,13 @@ def content_words(text: str) -> set[str]:
 
 
 def term_present(text: str, term: str) -> bool:
-    """Word-boundary match of a (possibly multi-word) term, case-insensitive."""
-    norm_term = normalize(term)
-    norm_text = normalize(text)
+    """Word-boundary match of a (possibly multi-word) term, case-insensitive.
 
-    term_words = _WORD.findall(norm_term)
-    text_words = _WORD.findall(norm_text)
-
-    def words_match(term_word: str, text_word: str) -> bool:
-        """Check if a text word matches a term word, allowing plurals/conjugations."""
-        if term_word == text_word:
-            return True
-        # Try removing common suffixes from text word
-        if text_word.endswith("es") and text_word[:-2] == term_word:
-            return True
-        if text_word.endswith("s") and text_word[:-1] == term_word:
-            return True
-        return False
-
-    # Check if term words appear consecutively in text words
-    for i in range(len(text_words) - len(term_words) + 1):
-        if all(
-            words_match(term_words[j], text_words[i + j])
-            for j in range(len(term_words))
-        ):
-            return True
-    return False
+    Matching is EXACT: 'spread' does not match 'spreads'. Inflected forms are
+    curated into the data-file term groups, never inferred here.
+    """
+    pattern = re.escape(normalize(term)).replace(r"\ ", r"\s+")
+    return re.search(rf"(?<!\w){pattern}(?!\w)", normalize(text)) is not None
 
 
 def group_coverage(text: str, groups: Sequence[Sequence[str]]) -> float:
