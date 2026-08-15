@@ -14,9 +14,11 @@ model, no GPU, and no torch.
 from __future__ import annotations
 
 import argparse
+import json
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -204,3 +206,164 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Recompute coverages, distortion, convergence, and thresholds from a "
              "prior report's persisted responses. No model, no GPU, no torch.")
     return parser.parse_args(argv)
+
+
+def _load_prompts(path: Path) -> list[dict[str, Any]]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return data.get("prompts", [])
+
+
+def _load_rescore(
+    path: Path,
+) -> tuple[list[dict[str, Any]], list[dict[str, str]], dict[str, Any]]:
+    """Rebuild the record set from a prior report. Generation is the only step
+    that needs a model; everything downstream is post-processing."""
+    prior = json.loads(path.read_text(encoding="utf-8"))
+    records: list[dict[str, Any]] = prior.get("records", [])
+    if not records:
+        raise SystemExit(f"{path} contains no records to rescore.")
+    required = ("free_response", "topic_groups", "operative_groups",
+                "refusal_projection_max", "calibrated_pressure")
+    for field in required:
+        missing = [r.get("id", "?") for r in records if field not in r]
+        if missing:
+            raise SystemExit(
+                f"{len(missing)} record(s) in {path} lack {field!r}; this corpus cannot "
+                "be rescored. Re-run the model pass to regenerate."
+            )
+    # Structural corpus validity (are the required classes even present?) is
+    # checked BEFORE per-record completeness within the pairs class, so a
+    # corpus missing a whole class reports that first — the more salient error.
+    for cls in (CLASS_PAIRS, CLASS_DIRECT):
+        if not any(r["category"] == cls for r in records):
+            raise SystemExit(
+                f"class {cls!r} has zero records in {path}; thresholds need both "
+                "the pair corpus and the direct-answer controls."
+            )
+    pairs_missing_sub = [
+        r.get("id", "?")
+        for r in records
+        if r["category"] == CLASS_PAIRS and "substitute_response" not in r
+    ]
+    if pairs_missing_sub:
+        raise SystemExit(
+            f"{len(pairs_missing_sub)} pair record(s) in {path} lack "
+            "'substitute_response'; convergence cannot be recomputed."
+        )
+    provenance = dict(prior.get("provenance", {}))
+    provenance["rescored_from"] = str(path)
+    provenance["rescored_at"] = datetime.now(UTC).isoformat()
+    return records, list(prior.get("summary", {}).get("excluded", [])), provenance
+
+
+def _generate_records(
+    args: argparse.Namespace,
+) -> tuple[list[dict[str, Any]], list[dict[str, str]], dict[str, Any]]:
+    # Imported here so the pure layer above stays importable without [model].
+    import torch
+
+    from esta.calibration import load_calibration
+    from esta.inference import GenerationParams, ModelState, generate_with_epistemic_state
+
+    if not args.refusal_direction or not args.refusal_direction.exists():
+        raise SystemExit(
+            f"refusal direction not found at {args.refusal_direction}; the anchor is "
+            "not optional for this analysis (see the design doc)."
+        )
+    if not args.calibration or not args.calibration.exists():
+        raise SystemExit(
+            f"calibration not found at {args.calibration}; without bands every record "
+            "would gate to zero and the anchored signal would be meaningless."
+        )
+    calibration = load_calibration(args.calibration, serving_model=args.model)
+
+    sets = {
+        cls: _load_prompts(args.probe_dir / f"{cls}.json") for cls in ALL_CLASSES
+    }
+    for cls, prompts in sets.items():
+        if not prompts:
+            raise SystemExit(f"probe set {cls!r} is empty or missing in {args.probe_dir}.")
+        for p in prompts:
+            if not p.get("topic_groups") or not p.get("operative_groups"):
+                raise SystemExit(f"prompt {p.get('id', '?')!r} in {cls} lacks term groups.")
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    state = ModelState(
+        model_name=args.model,
+        device=device,
+        dtype=torch.bfloat16 if device == "cuda" else torch.float32,
+        refusal_direction_path=args.refusal_direction,
+    )
+    state.load()
+    if not state.refusal_probe_loaded:
+        raise SystemExit("refusal probe failed to load; the anchor is not optional.")
+
+    params = GenerationParams(max_tokens=args.max_tokens, temperature=0.0)
+
+    def _run(text: str):
+        chat = state.tokenizer.apply_chat_template(
+            [{"role": "user", "content": text}], tokenize=False, add_generation_prompt=True
+        )
+        return generate_with_epistemic_state(
+            model_state=state, prompt=chat, params=params,
+            refusal_layer=args.refusal_layer, calibration=calibration,
+        )
+
+    records: list[dict[str, Any]] = []
+    excluded: list[dict[str, str]] = []
+    for cls, prompts in sets.items():
+        print(f"running {cls} ({len(prompts)} prompts) ...")
+        for prompt in prompts:
+            free = _run(prompt["text"])
+            if not free.response_text.strip():
+                excluded.append({"id": prompt["id"], "reason": "empty response"})
+                continue
+            record: dict[str, Any] = {
+                "id": prompt["id"],
+                "category": cls,
+                "text": prompt["text"],
+                "free_response": free.response_text.strip(),
+                "topic_groups": prompt["topic_groups"],
+                "operative_groups": prompt["operative_groups"],
+                "refusal_projection_max": float(
+                    free.safety_pressure.refusal_projection_max
+                ),
+                "calibrated_pressure": str(free.safety_pressure.calibrated_pressure),
+            }
+            if cls == CLASS_PAIRS:
+                substitute = _run(prompt["substitute_text"])
+                if not substitute.response_text.strip():
+                    excluded.append(
+                        {"id": prompt["id"], "reason": "empty substitute response"}
+                    )
+                    continue
+                record["substitute_text"] = prompt["substitute_text"]
+                record["substitute_response"] = substitute.response_text.strip()
+            records.append(record)
+
+    provenance = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "model": args.model,
+        "max_tokens": args.max_tokens,
+        "refusal_direction": str(args.refusal_direction),
+        "refusal_layer": args.refusal_layer,
+        "calibration": str(args.calibration),
+    }
+    return records, excluded, provenance
+
+
+def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = parse_args()
+    if args.rescore is not None:
+        records, excluded, provenance = _load_rescore(args.rescore)
+    else:
+        records, excluded, provenance = _generate_records(args)
+    report = build_report(records, excluded, provenance)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print_report(report, args.output)
+
+
+if __name__ == "__main__":
+    main()

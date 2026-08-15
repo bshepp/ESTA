@@ -1233,6 +1233,15 @@ def _load_rescore(
                 f"{len(missing)} record(s) in {path} lack {field!r}; this corpus cannot "
                 "be rescored. Re-run the model pass to regenerate."
             )
+    # Structural corpus validity (are the required classes even present?) is
+    # checked BEFORE per-record completeness within the pairs class, so a
+    # corpus missing a whole class reports that first — the more salient error.
+    for cls in (CLASS_PAIRS, CLASS_DIRECT):
+        if not any(r["category"] == cls for r in records):
+            raise SystemExit(
+                f"class {cls!r} has zero records in {path}; thresholds need both "
+                "the pair corpus and the direct-answer controls."
+            )
     pairs_missing_sub = [
         r.get("id", "?")
         for r in records
@@ -1243,12 +1252,6 @@ def _load_rescore(
             f"{len(pairs_missing_sub)} pair record(s) in {path} lack "
             "'substitute_response'; convergence cannot be recomputed."
         )
-    for cls in (CLASS_PAIRS, CLASS_DIRECT):
-        if not any(r["category"] == cls for r in records):
-            raise SystemExit(
-                f"class {cls!r} has zero records in {path}; thresholds need both "
-                "the pair corpus and the direct-answer controls."
-            )
     provenance = dict(prior.get("provenance", {}))
     provenance["rescored_from"] = str(path)
     provenance["rescored_at"] = datetime.now(UTC).isoformat()
