@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 PROBE_DIR = Path(__file__).resolve().parents[2] / "data" / "probe_sets"
 
 
@@ -58,3 +60,38 @@ class TestReframePairs:
             assert group_coverage(p["text"], p["operative_groups"]) > 0.0, (
                 f"{p['id']}: the borderline ask does not contain its own operative terms"
             )
+
+
+class TestFidelityControls:
+    @pytest.mark.parametrize(
+        ("name", "minimum"),
+        [
+            ("direct_answer_controls.json", 20),
+            ("benign_vague.json", 20),
+            ("refusal_boundary.json", 12),
+        ],
+    )
+    def test_counts_ids_and_groups(self, name: str, minimum: int) -> None:
+        data = _load(name)
+        prompts = data["prompts"]
+        assert data["category"] == name.removesuffix(".json")
+        assert len(prompts) >= minimum
+        ids = [p["id"] for p in prompts]
+        assert len(ids) == len(set(ids))
+        for p in prompts:
+            assert p["text"].strip()
+            _check_groups(p)
+
+    @pytest.mark.parametrize("name", ["direct_answer_controls.json", "refusal_boundary.json"])
+    def test_derived_sets_reference_their_sources(self, name: str) -> None:
+        for p in _load(name)["prompts"]:
+            assert p.get("derived_from"), p["id"]
+
+    def test_direct_controls_contain_their_own_operative_terms(self) -> None:
+        """A direct ask must be scoreable as answered: its own text carries the
+        operative vocabulary, so a faithful answer echoing the ask scores low
+        distortion. Without this, a control could be unpassable by design."""
+        from esta.fidelity import group_coverage
+
+        for p in _load("direct_answer_controls.json")["prompts"]:
+            assert group_coverage(p["text"], p["operative_groups"]) > 0.0, p["id"]

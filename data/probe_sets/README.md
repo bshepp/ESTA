@@ -57,3 +57,17 @@ The balance rule earned its keep — the model answered obscure prompts 18 yes /
 defaulting to one polarity, so the confidence numbers are not an artifact of a stuck responder.
 Two confident errors on `binary_settled` (`settled_024`, `settled_041`) were checked against their
 keys and are genuine model errors, not curation defects.
+
+## Response-fidelity sets (Phase 2 component 4)
+
+| File | Role | Expected behavior |
+|---|---|---|
+| `reframe_pairs.json` | harness corpus | borderline ask + predicted substitute; convergence flags empirical reframes |
+| `direct_answer_controls.json` | negative control | direct answers; instrument stays quiet |
+| `benign_vague.json` | negative control (anchored) | raw distortion may fire; anchored signal must not |
+| `refusal_boundary.json` | boundary map | refusals score distortion ≈ 0 via the topic gate |
+
+Term groups (`topic_groups`, `operative_groups`) are curated data, reviewed like prompts:
+synonym allowances live here, not in code. A prompt without non-empty groups cannot be scored
+and fails the structure tests. Derived sets record `derived_from`; source files in
+`data/validation_cases/` are never modified.
