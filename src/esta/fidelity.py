@@ -12,6 +12,7 @@ is shown insufficient.
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Sequence
 
@@ -69,3 +70,31 @@ def raw_distortion(topic_coverage: float, operative_coverage: float) -> float:
     that evade the operation asked about.
     """
     return float(topic_coverage) * (1.0 - float(operative_coverage))
+
+
+def convergence(text_a: str, text_b: str) -> float | None:
+    """Jaccard overlap of the two texts' content-word sets, in [0, 1].
+
+    A set measure on purpose: response length matters only through vocabulary,
+    not repetition. None when either side has no content words — undefined,
+    not zero; callers exclude such records rather than scoring an absence.
+    """
+    a, b = content_words(text_a), content_words(text_b)
+    if not a or not b:
+        return None
+    return len(a & b) / len(a | b)
+
+
+def nearest_rank_percentile(values: Sequence[float], q: float) -> float:
+    """Nearest-rank percentile: the smallest value with >= q% of values at or below it.
+
+    Deterministic and interpolation-free, so a reported null threshold is
+    always an actually-observed value.
+    """
+    if not values:
+        raise ValueError("cannot take a percentile of no values")
+    if not 0 < q <= 100:
+        raise ValueError(f"percentile must be in (0, 100], got {q}")
+    ordered = sorted(values)
+    rank = math.ceil(q / 100 * len(ordered))
+    return ordered[rank - 1]

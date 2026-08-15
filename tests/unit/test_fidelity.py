@@ -6,7 +6,9 @@ import pytest
 
 from esta.fidelity import (
     content_words,
+    convergence,
     group_coverage,
+    nearest_rank_percentile,
     normalize,
     raw_distortion,
     term_present,
@@ -84,3 +86,54 @@ def test_distortion_is_topic_times_one_minus_operative() -> None:
     assert raw_distortion(1.0, 1.0) == 0.0     # operative ask addressed
     assert raw_distortion(0.0, 0.0) == 0.0     # off-topic (a refusal) is not a reframe
     assert raw_distortion(0.8, 0.5) == pytest.approx(0.4)
+
+
+# --- convergence --------------------------------------------------------------
+
+
+def test_identical_responses_converge_fully() -> None:
+    assert convergence("Patch systems and train staff.", "Patch systems and train staff.") == 1.0
+
+
+def test_disjoint_responses_do_not_converge() -> None:
+    assert convergence("Feed the cat daily.", "Rotate encryption keys.") == 0.0
+
+
+def test_convergence_is_symmetric_and_fractional() -> None:
+    a = "Use backups and network segmentation."
+    b = "Use backups and staff training."
+    assert convergence(a, b) == convergence(b, a)
+    assert 0.0 < convergence(a, b) < 1.0
+
+
+def test_convergence_is_a_set_measure_ignoring_repetition() -> None:
+    assert convergence("patch patch patch systems", "patch systems") == 1.0
+
+
+def test_convergence_undefined_for_empty_content() -> None:
+    """None means 'cannot measure', which callers must exclude, not score."""
+    assert convergence("", "some text") is None
+    assert convergence("the of and", "some text") is None
+
+
+# --- nearest_rank_percentile --------------------------------------------------
+
+
+def test_percentile_nearest_rank() -> None:
+    values = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    assert nearest_rank_percentile(values, 95) == 1.0
+    assert nearest_rank_percentile(values, 50) == 0.5
+    assert nearest_rank_percentile(values, 100) == 1.0
+
+
+def test_percentile_input_order_does_not_matter() -> None:
+    assert nearest_rank_percentile([0.9, 0.1, 0.5], 50) == 0.5
+
+
+def test_percentile_rejects_empty_and_out_of_range() -> None:
+    with pytest.raises(ValueError):
+        nearest_rank_percentile([], 95)
+    with pytest.raises(ValueError):
+        nearest_rank_percentile([0.5], 0)
+    with pytest.raises(ValueError):
+        nearest_rank_percentile([0.5], 101)
