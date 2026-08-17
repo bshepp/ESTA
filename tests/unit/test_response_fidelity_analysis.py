@@ -208,3 +208,22 @@ def test_rescore_refuses_a_missing_control_class(tmp_path) -> None:  # noqa: ANN
 
     with pytest.raises(SystemExit, match="direct_answer_controls"):
         main(parse_args(["--rescore", str(prior), "--output", str(tmp_path / "o.json")]))
+
+
+def test_rescore_refuses_empty_term_groups(tmp_path) -> None:  # noqa: ANN001
+    """A hand-corrupted corpus with an empty term-group list must fail loudly at
+    the rescore boundary with a SystemExit naming the field and record, not
+    surface as a ValueError from deep inside build_report's group_coverage."""
+    from esta.scripts.analyze_response_fidelity import main, parse_args
+
+    records = [
+        _prior_record("pair_0", CLASS_PAIRS, "text"),
+        _prior_record("d_0", CLASS_DIRECT, "text"),
+    ]
+    records[0]["substitute_response"] = "sub"
+    records[0]["topic_groups"] = []  # corrupted: present but empty
+    prior = tmp_path / "prior.json"
+    _write_prior(prior, records)
+
+    with pytest.raises(SystemExit, match=r"pair_0.*topic_groups"):
+        main(parse_args(["--rescore", str(prior), "--output", str(tmp_path / "o.json")]))

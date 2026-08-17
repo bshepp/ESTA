@@ -231,6 +231,18 @@ def _load_rescore(
                 f"{len(missing)} record(s) in {path} lack {field!r}; this corpus cannot "
                 "be rescored. Re-run the model pass to regenerate."
             )
+    # Present-but-empty term groups would only surface as a ValueError from deep
+    # inside build_report's group_coverage. Fail loud at the boundary instead,
+    # naming the record and field, mirroring how the generation path validates
+    # its probe files before running.
+    for field in ("topic_groups", "operative_groups"):
+        for record in records:
+            groups = record[field]
+            if not groups or any(not group for group in groups):
+                raise SystemExit(
+                    f"record {record.get('id', '?')!r} in {path} has empty {field!r} "
+                    "(or an empty group within it); it cannot be scored. Fix the corpus."
+                )
     # Structural corpus validity (are the required classes even present?) is
     # checked BEFORE per-record completeness within the pairs class, so a
     # corpus missing a whole class reports that first — the more salient error.
