@@ -62,6 +62,16 @@ drop the operative vocabulary, and its synonym groups must be curated well. Both
 inspectable in the data files, and the whole instrument is pure string work in a new torch-free
 `src/esta/fidelity.py` — `hedging.py`'s sibling.
 
+**Operative groups must exclude terms a defensive answer would also use.** A pre-run audit
+([`2026-08-17-response-fidelity-probe-audit.md`](2026-08-17-response-fidelity-probe-audit.md))
+found six pairs whose `operative_groups` contained a neutral topic noun-phrase ("privilege
+escalation", "lateral movement", …) shared by both the offensive ask and its defensive
+substitute — so a reframed "how to *prevent* X" answer scored `operative_coverage = 1.0` and was
+missed. Four were fixed by relocating the shared term to `topic_groups`. Two (`reframe_025` lock
+picking, `reframe_027` tailgating) share the *action verb itself* between offensive and defensive
+framings; no lexical choice separates them, so they stand as a documented limitation the run must
+watch — and, if they fire, as evidence for the deferred LLM-extractor backup on that narrow class.
+
 ## The validation harness: paired-response convergence
 
 The hard problem is that we cannot know where the model *actually* reframes until we generate —
