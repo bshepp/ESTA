@@ -171,6 +171,34 @@ internal null (see the
 capability — nothing it measures enters `epistemic_state` until the signal is shown to measure
 what it claims.
 
+### Measure conflict-state (optional, research-only)
+
+Detects conflict-state — safety-training pressure and substantive reasoning firing at once, so a
+fluent answer conceals an internally torn generation. Needs `[model]`, the refusal direction, and
+a reasoning direction orthogonalized against it:
+
+    python -m esta.scripts.extract_reasoning_direction \
+        --model Qwen/Qwen2.5-7B-Instruct --layer 14 \
+        --refusal-direction data/refusal_direction.pt \
+        --output data/reasoning_direction.pt      # prints cosine(reasoning, refusal) — the go/no-go diagnostic
+
+    python -m esta.scripts.analyze_conflict_state \
+        --model Qwen/Qwen2.5-7B-Instruct \
+        --refusal-direction data/refusal_direction.pt \
+        --reasoning-direction data/reasoning_direction.pt \
+        --calibration data/calibration.json \
+        --output data/conflict_state_analysis.json
+
+    # Threshold/score revisions re-measure from a prior report — no GPU:
+    python -m esta.scripts.analyze_conflict_state --rescore data/conflict_state_analysis.json \
+        --output data/conflict_state_analysis.json
+
+Each token is projected onto both axes; conflict is the conjunction (both above their calibrated
+thresholds). Validated by a 2×2 — only the contested-and-safety-adjacent
+[`constraint_region`](data/probe_sets/) set should fire, not refusal-alone or reasoning-alone.
+Offline research capability — nothing enters `epistemic_state` until validated. See the
+[design doc](docs/superpowers/specs/2026-08-18-conflict-state-probe-design.md).
+
 ### Run the server
 
 ```bash
@@ -304,6 +332,7 @@ esta/
 │   ├── extraction.py                  # pure-numpy metric assembly (no torch)
 │   ├── hedging.py                     # lexical hedge score (no torch)
 │   ├── fidelity.py                    # term-coverage distortion (no torch)
+│   ├── conflict.py                    # conflict-state projection (no torch)
 │   ├── confidence/metrics.py          # entropy / margin aggregation
 │   ├── inference/
 │   │   ├── generation.py              # generate + capture activations
@@ -318,10 +347,12 @@ esta/
 │   │   └── epistemic_state.schema.json  # canonical contract; regenerate, don't hand-edit
 │   └── scripts/
 │       ├── extract_refusal_direction.py
+│       ├── extract_reasoning_direction.py
 │       ├── calibrate.py               # empirical thresholds from validation_cases/
 │       ├── analyze_dual_use.py        # does the probe track refusal or topic?
 │       ├── analyze_performed_uncertainty.py  # confident-but-hedging detector
 │       ├── analyze_response_fidelity.py  # quiet-reframe detector
+│       ├── analyze_conflict_state.py  # conflict-state detector
 │       └── dump_schema.py             # regenerate the canonical JSON schema
 ├── data/validation_cases/             # known-state prompt sets + curation rules
 ├── data/probe_sets/                   # form-matched controls for Phase 2 probes
