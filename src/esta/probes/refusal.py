@@ -1,5 +1,8 @@
 """Refusal-direction probe per Arditi et al. (2024).
 
+Grounding: [arditi-2024] — see docs/REFERENCES.md.
+
+
 This module is torch-dependent. The pure-Python parts (threshold labels and
 defaults) live in `esta.probes.thresholds` so they can be imported by code
 paths that don't need the runtime.

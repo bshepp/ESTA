@@ -21,6 +21,7 @@
 - **Persist per-token projections and full response** so threshold/score revisions re-measure offline via `--rescore`. Standing policy.
 - **Determinism:** all generation at `temperature=0.0`.
 - **Israel-Palestine must appear in `constraint_region.json`** (originator's empirical example; the run reports it by name).
+- **Cite grounding in each new module's docstring**, per the convention in `docs/REFERENCES.md`: `conflict.py`, `analyze_conflict_state.py` → `Grounding: ESTA-original construct; method [arditi-2024], feature-competition intuition [templeton-2024] — see docs/REFERENCES.md`; `extract_reasoning_direction.py` → `Grounding: [arditi-2024] (contrastive-direction method) — see docs/REFERENCES.md`.
 
 ## Existing interfaces you will consume (verified, do not re-derive)
 

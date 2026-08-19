@@ -1,5 +1,8 @@
 """Deterministic instruments for the response-fidelity detector.
 
+Grounding: ESTA-original construct (carried from the archived D-CCTS framework); no single paper
+defines it — see docs/REFERENCES.md, "ESTA-original constructs".
+
 Torch-free: pure string work, unit-tested in the no-[model] CI environment,
 like `esta.hedging`. See docs/superpowers/specs/2026-08-12-response-fidelity-design.md.
 

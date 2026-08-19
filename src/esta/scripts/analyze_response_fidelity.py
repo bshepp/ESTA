@@ -7,6 +7,9 @@ term-group coverage (esta.fidelity); validation is paired-response convergence
 with an internal null; the anchor is the Phase 1 refusal projection. See
 docs/superpowers/specs/2026-08-12-response-fidelity-design.md.
 
+Grounding: ESTA-original construct (from the archived D-CCTS framework), anchored to the
+[arditi-2024] refusal signal — see docs/REFERENCES.md, "ESTA-original constructs".
+
 Everything except _generate_records() is torch-free; --rescore runs with no
 model, no GPU, and no torch.
 """

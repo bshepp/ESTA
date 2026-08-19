@@ -4,6 +4,8 @@ Per Sharma et al. (2023), RLHF rewards hedge-language on topics the model is in
 fact confident about. This measures the gap directly rather than by training a
 probe.
 
+Grounding: [sharma-2023] — see docs/REFERENCES.md.
+
 THE MEASUREMENT. Each prompt is generated twice: free-form, to measure how much
 the response hedges, and constrained ("answer yes or no"), to measure the
 model's confidence on the answer token. Performed uncertainty is the

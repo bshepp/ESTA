@@ -1,5 +1,7 @@
 """Per-token confidence metrics aggregated across a generated sequence.
 
+Grounding: [kadavath-2022] — token-confidence as a self-knowledge signal; see docs/REFERENCES.md.
+
 These functions operate on numpy arrays so they can be unit-tested without
 torch installed. The server converts torch logits to numpy at the boundary.
 

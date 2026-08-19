@@ -1,5 +1,8 @@
 """Lexical hedge detection over generated response text.
 
+Grounding: [sharma-2023] — RLHF-rewarded hedging despite internal confidence; see docs/REFERENCES.md.
+
+
 Torch-free: the measure is pure string work and must stay unit-testable in the
 no-[model] CI environment.
 

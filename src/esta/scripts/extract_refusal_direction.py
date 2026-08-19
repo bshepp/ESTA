@@ -1,5 +1,8 @@
 """Extract the refusal direction from a local model per Arditi et al. (2024).
 
+Grounding: [arditi-2024] — see docs/REFERENCES.md.
+
+
 Procedure:
     1. Run HARMFUL prompts (refused by the model) and HARMLESS prompts (complied with).
     2. Capture the residual stream activation at the target layer for each prompt.
