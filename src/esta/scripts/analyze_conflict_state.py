@@ -91,10 +91,10 @@ def print_report(report: dict[str, Any], output: Path) -> None:
     s = report["summary"]
     print(f"\nwrote {output}  ({len(report['records'])} records, {len(s['excluded'])} excluded)")
     if s["theta_eng"] is None:
-        print("\nNOTE: reasoning controls did not separate; θ_eng not placed, no conflict scored.")
+        print("\nNOTE: reasoning controls did not separate; theta_eng not placed, no conflict scored.")
     else:
         c = s["theta_eng"]
-        print(f"\nθ_ref={s['theta_ref']:.3f}  θ_eng={c['cutoff']:.3f} "
+        print(f"\ntheta_ref={s['theta_ref']:.3f}  theta_eng={c['cutoff']:.3f} "
               f"(AUC {c['auc']:.2f}, p={c['p_value']:.1e})")
     print("\nby category:")
     for cat, st in s["by_category"].items():

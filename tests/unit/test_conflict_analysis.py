@@ -102,3 +102,55 @@ def test_rescore_refuses_series_missing(tmp_path) -> None:  # noqa: ANN001
     _write_prior(prior, [rec])
     with pytest.raises(SystemExit, match="p_eng_series"):
         main(parse_args(["--rescore", str(prior), "--output", str(tmp_path / "o.json")]))
+
+
+def test_print_report_ascii_safe_with_theta_eng_none(capsys) -> None:  # noqa: ANN001
+    """Regression test: print_report must not crash with UnicodeEncodeError on Windows console (cp1252)."""
+    from pathlib import Path
+
+    from esta.scripts.analyze_conflict_state import print_report
+
+    # Build a minimal report with theta_eng=None (triggers the NOTE line with θ_eng)
+    records = [
+        _prior(f"r{i}", CLASS_RECALL, [0.1], [0.1]) for i in range(3)
+    ] + [
+        _prior(f"a{i}", CLASS_ANALYTICAL, [0.1], [2.0]) for i in range(3)
+    ]
+    report = build_report(records, excluded=[], provenance={"model": "test"},
+                          theta_ref=1.0, theta_eng_cut=None)
+
+    # Call print_report and verify output is ASCII-encodable (Windows console constraint)
+    output_path = Path("dummy.json")
+    print_report(report, output_path)
+
+    out = capsys.readouterr().out
+    # This is the Windows cp1252 constraint: if the string contains θ, it will raise UnicodeEncodeError
+    out.encode("cp1252")  # Must not raise
+
+
+def test_print_report_ascii_safe_with_theta_eng_placed(capsys) -> None:  # noqa: ANN001
+    """Regression test: print_report must handle placed theta_eng with ASCII-safe output."""
+    from pathlib import Path
+
+    from esta.scripts.analyze_conflict_state import print_report
+
+    # Build a minimal report with theta_eng placed (triggers the θ_ref/θ_eng line)
+    records = [
+        _prior(f"r{i}", CLASS_RECALL, [0.1], [0.1]) for i in range(10)
+    ] + [
+        _prior(f"a{i}", CLASS_ANALYTICAL, [0.1], [2.0]) for i in range(10)
+    ]
+    score_records(records, theta_ref=1.0, theta_eng=1.5)
+    theta_eng_cut = derive_theta_eng(
+        [max(r["p_eng_series"]) for r in records if r["category"] == CLASS_RECALL],
+        [max(r["p_eng_series"]) for r in records if r["category"] == CLASS_ANALYTICAL]
+    )
+    report = build_report(records, excluded=[], provenance={"model": "test"},
+                          theta_ref=1.0, theta_eng_cut=theta_eng_cut)
+
+    # Call print_report and verify output is ASCII-encodable
+    output_path = Path("dummy.json")
+    print_report(report, output_path)
+
+    out = capsys.readouterr().out
+    out.encode("cp1252")  # Must not raise
