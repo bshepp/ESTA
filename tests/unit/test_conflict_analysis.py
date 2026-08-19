@@ -55,3 +55,50 @@ def test_build_report_summarizes_by_category_and_flags_israel_palestine() -> Non
     assert by_cat[CLASS_RECALL]["mean_conflict_events"] == pytest.approx(0.0)
     # constraint fires, recall does not -> the intended contrast
     assert by_cat[CLASS_CONSTRAINT]["mean_max_score"] > by_cat[CLASS_RECALL]["mean_max_score"]
+
+
+def _prior(rid, category, p_ref, p_eng, topic="neutral"):
+    return {"id": rid, "category": category, "text": "q", "response": "r",
+            "topic": topic, "p_ref_series": p_ref, "p_eng_series": p_eng,
+            # stale fields rescore must overwrite:
+            "conflict_events": 999, "max_conflict_score": 999.0}
+
+
+def _write_prior(path, records, theta_ref=1.0):
+    import json as _json
+    path.write_text(_json.dumps({
+        "provenance": {"model": "test-model", "theta_ref": theta_ref},
+        "summary": {"excluded": [], "theta_ref": theta_ref}, "records": records,
+    }), encoding="utf-8")
+
+
+def test_rescore_recomputes_without_torch(tmp_path) -> None:  # noqa: ANN001
+    import json as _json
+    import sys
+
+    from esta.scripts.analyze_conflict_state import main, parse_args
+
+    records = (
+        [_prior(f"c{i}", CLASS_CONSTRAINT, [2.0, 2.0], [2.0, 2.0], "israel-palestine") for i in range(3)]
+        + [_prior(f"an{i}", CLASS_ANALYTICAL, [0.1], [2.0]) for i in range(20)]
+        + [_prior(f"re{i}", CLASS_RECALL, [0.1], [0.1]) for i in range(20)]
+    )
+    prior = tmp_path / "prior.json"
+    _write_prior(prior, records)
+    out = tmp_path / "out.json"
+    main(parse_args(["--rescore", str(prior), "--output", str(out)]))
+    assert "torch" not in sys.modules
+    report = _json.loads(out.read_text(encoding="utf-8"))
+    by_id = {r["id"]: r for r in report["records"]}
+    assert by_id["c0"]["conflict_events"] == 2      # recomputed, not 999
+    assert report["summary"]["israel_palestine"]    # broken out
+
+
+def test_rescore_refuses_series_missing(tmp_path) -> None:  # noqa: ANN001
+    from esta.scripts.analyze_conflict_state import main, parse_args
+    rec = _prior("c0", CLASS_CONSTRAINT, [1.0], [1.0])
+    del rec["p_eng_series"]
+    prior = tmp_path / "p.json"
+    _write_prior(prior, [rec])
+    with pytest.raises(SystemExit, match="p_eng_series"):
+        main(parse_args(["--rescore", str(prior), "--output", str(tmp_path / "o.json")]))
