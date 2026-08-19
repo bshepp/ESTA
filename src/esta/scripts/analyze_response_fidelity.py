@@ -171,7 +171,7 @@ def print_report(report: dict[str, Any], output: Path) -> None:
           f"{len(summary['excluded'])} excluded)")
     cut = summary["distortion_threshold"]
     if cut is None:
-        print("\nNOTE: no distortion threshold — candidates and direct controls did not "
+        print("\nNOTE: no distortion threshold - candidates and direct controls did not "
               "rank-separate significantly (or a class was empty). Raw measurements stand.")
     else:
         print(f"\ndistortion threshold >= {cut['cutoff']:.3f}  "

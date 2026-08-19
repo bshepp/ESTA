@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from esta.scripts.analyze_response_fidelity import (
@@ -11,8 +13,28 @@ from esta.scripts.analyze_response_fidelity import (
     anchored_signal,
     build_report,
     pair_convergence_stats,
+    print_report,
     score_response,
 )
+
+
+def test_print_report_is_ascii_safe_on_the_no_threshold_branch(capsys) -> None:  # noqa: ANN001
+    """print_report must not emit non-ASCII (it crashed on a Windows cp1252
+    console with UnicodeEncodeError on an em-dash in the no-threshold NOTE).
+    Build a report whose classes don't rank-separate so distortion_threshold is
+    None, then confirm the printed summary encodes to cp1252."""
+    records = (
+        [_record(f"p{i}", CLASS_PAIRS, "alpha same", band="high",
+                 substitute_text="s", substitute_response="alpha same") for i in range(3)]
+        + [_record(f"d{i}", CLASS_DIRECT, "alpha same", band="low") for i in range(3)]
+        + [_record(f"v{i}", CLASS_VAGUE, "alpha extra", band="low") for i in range(3)]
+    )
+    report = build_report(records, excluded=[{"id": "x", "reason": "empty"}],
+                          provenance={"model": "m"})
+    assert report["summary"]["distortion_threshold"] is None  # exercises the crashing branch
+    print_report(report, Path("out.json"))
+    out = capsys.readouterr().out
+    out.encode("cp1252")  # must not raise UnicodeEncodeError
 
 # --- anchored_signal ----------------------------------------------------------
 
