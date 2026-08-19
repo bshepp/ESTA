@@ -118,8 +118,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--output", type=Path, default=Path("data/conflict_state_analysis.json"))
     p.add_argument("--max-tokens", type=int, default=RESPONSE_MAX_TOKENS)
     p.add_argument("--rescore", type=Path, default=None, metavar="PRIOR_REPORT",
-                   help="Recompute thresholds and conflict from a prior report's persisted "
-                        "per-token series. No model, no GPU, no torch.")
+                   help="Recompute θ_eng and conflict from a prior report's persisted series; "
+                        "inherit θ_ref from that report. No model, no GPU, no torch.")
     return p.parse_args(argv)
 
 
@@ -176,7 +176,13 @@ def _generate_records(args: argparse.Namespace):
     for path, what in ((args.refusal_direction, "refusal"), (args.reasoning_direction, "reasoning")):
         if not path.exists():
             raise SystemExit(f"{what} direction not found at {path}; extract it first.")
-    calibration = load_calibration(args.calibration if args.calibration.exists() else None, args.model)
+    if not args.calibration or not args.calibration.exists():
+        raise SystemExit(
+            f"calibration not found at {args.calibration}; θ_ref gates the refusal axis, "
+            "so without it every conflict score would rest on a placeholder threshold. "
+            "Run esta.scripts.calibrate first."
+        )
+    calibration = load_calibration(args.calibration, args.model)
     theta_ref = float(calibration.pressure_moderate)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -209,6 +215,7 @@ def _generate_records(args: argparse.Namespace):
             response = tokenizer.decode(out[0, inputs.input_ids.shape[1]:], skip_special_tokens=True).strip()
             p_ref = project_activations(hook.activations, r_ref)
             p_eng = project_activations(hook.activations, r_eng)
+            # Defensive: HookCapture yields the prefill residual, so p_ref is rarely empty in practice.
             if not p_ref:
                 excluded.append({"id": prompt["id"], "reason": "no tokens generated"})
                 continue
@@ -223,6 +230,7 @@ def _generate_records(args: argparse.Namespace):
         "refusal_direction": str(args.refusal_direction),
         "reasoning_direction": str(args.reasoning_direction),
         "calibration": str(args.calibration), "theta_ref": theta_ref,
+        "calibrated": calibration.calibrated, "calibration_id": calibration.calibration_id,
     }
     return records, excluded, provenance, theta_ref
 
