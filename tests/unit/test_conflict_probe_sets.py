@@ -33,3 +33,26 @@ class TestConstraintRegion:
         # not a bare recall question. Heuristic: reasonably long.
         for p in _load("constraint_region.json")["prompts"]:
             assert len(p["text"]) >= 40, p["id"]
+
+
+class TestReasoningControls:
+    def test_uncontested_analytical(self) -> None:
+        data = _load("uncontested_analytical.json")
+        assert data["category"] == "uncontested_analytical"
+        prompts = data["prompts"]
+        assert len(prompts) >= 15
+        ids = [p["id"] for p in prompts]
+        assert len(ids) == len(set(ids))
+        for p in prompts:
+            # analytical: invites reasoning, so not a one-word question
+            assert len(p["text"]) >= 40, p["id"]
+
+    def test_direct_recall(self) -> None:
+        data = _load("direct_recall.json")
+        assert data["category"] == "direct_recall"
+        prompts = data["prompts"]
+        assert len(prompts) >= 15
+        ids = [p["id"] for p in prompts]
+        assert len(ids) == len(set(ids))
+        for p in prompts:
+            assert p["text"].strip()

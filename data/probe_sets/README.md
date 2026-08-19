@@ -71,3 +71,16 @@ Term groups (`topic_groups`, `operative_groups`) are curated data, reviewed like
 synonym allowances live here, not in code. A prompt without non-empty groups cannot be scored
 and fails the structure tests. Derived sets record `derived_from`; source files in
 `data/validation_cases/` are never modified.
+
+## Conflict-probe sets (Phase 2 component 1, v1a)
+
+| File | Role | Expected axes |
+|---|---|---|
+| `constraint_region.json` | positive | high refusal AND high reasoning → conflict fires |
+| `uncontested_analytical.json` | negative control + θ_eng upper class | high reasoning, low refusal |
+| `direct_recall.json` | negative control + θ_eng lower class | neither axis |
+
+The refusal-bait negative (`refusal_boundary.json`, high refusal / low reasoning) is reused. Only
+`constraint_region` should fire conflict; if `refusal_boundary` fires, the probe is detecting
+refusal, not conflict. The reasoning *direction* is extracted from held-out prompts built into
+`extract_reasoning_direction.py`, kept distinct from these calibration/validation classes.
