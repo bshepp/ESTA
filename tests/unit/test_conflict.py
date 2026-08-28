@@ -11,6 +11,7 @@ from esta.conflict import (
     cosine_similarity,
     orthogonalize,
     token_conflict,
+    windowed_conflict_aggregates,
 )
 
 # --- cosine_similarity --------------------------------------------------------
@@ -97,3 +98,89 @@ def test_empty_series_yields_no_conflict_measurement() -> None:
 def test_aggregates_require_equal_length_series() -> None:
     with pytest.raises(ValueError):
         conflict_aggregates([1.0, 2.0], [1.0], theta_ref=1.0, theta_eng=1.0)
+
+
+# --- windowed_conflict_aggregates (v2) ----------------------------------------
+
+
+def test_window_zero_reduces_exactly_to_same_token_conjunction() -> None:
+    """The v1a anchor: window=0 must reproduce conflict_aggregates. If it ever
+    diverges, the v2 sweep's baseline column stops matching the published v1a
+    numbers and every comparison across window sizes loses its zero point."""
+    p_ref = [2.0, 0.5, 3.0]
+    p_eng = [2.0, 2.0, 0.4]
+    same = conflict_aggregates(p_ref, p_eng, theta_ref=1.0, theta_eng=1.0)
+    win = windowed_conflict_aggregates(p_ref, p_eng, theta_ref=1.0, theta_eng=1.0, window=0)
+    assert win["windowed_max_conflict_score"] == pytest.approx(same["max_conflict_score"])
+    assert win["conflict_episodes"] == same["conflict_events"]
+    assert win["any_conflict"] is True  # one same-token event exists
+
+
+def test_window_catches_axes_that_peak_two_tokens_apart() -> None:
+    """The boundary_004 diagnostic: refusal peaks at token 2, reasoning at token
+    0 (gap 2). Same-token (0) and gap-1 windows miss it; a gap-2 window fires."""
+    p_ref = [0.0, 0.0, 2.0]   # refusal lit only at token 2
+    p_eng = [2.0, 0.0, 0.0]   # reasoning lit only at token 0
+    for w in (0, 1):
+        agg = windowed_conflict_aggregates(p_ref, p_eng, theta_ref=1.0, theta_eng=1.0, window=w)
+        assert agg["any_conflict"] is False
+    fired = windowed_conflict_aggregates(p_ref, p_eng, theta_ref=1.0, theta_eng=1.0, window=2)
+    assert fired["any_conflict"] is True
+    assert fired["windowed_max_conflict_score"] == pytest.approx(2.0)
+
+
+def test_whole_response_window_catches_far_apart_crossings() -> None:
+    """window=None is whole-response: both axes crossing anywhere counts, even
+    six tokens apart where a bounded window would not reach."""
+    p_ref = [2.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    p_eng = [0.0, 0.0, 0.0, 0.0, 0.0, 2.0]
+    bounded = windowed_conflict_aggregates(p_ref, p_eng, theta_ref=1.0, theta_eng=1.0, window=2)
+    assert bounded["any_conflict"] is False
+    whole = windowed_conflict_aggregates(p_ref, p_eng, theta_ref=1.0, theta_eng=1.0, window=None)
+    assert whole["any_conflict"] is True
+    assert whole["windowed_max_conflict_score"] == pytest.approx(2.0)
+
+
+def test_windowed_max_is_monotonic_nondecreasing_in_window() -> None:
+    p_ref = [0.0, 0.0, 2.0]
+    p_eng = [2.0, 0.0, 0.0]
+    scores = [
+        windowed_conflict_aggregates(p_ref, p_eng, theta_ref=1.0, theta_eng=1.0, window=w)[
+            "windowed_max_conflict_score"
+        ]
+        for w in (0, 1, 2, 3)
+    ]
+    assert scores == sorted(scores)
+
+
+def test_widening_window_merges_adjacent_episodes() -> None:
+    """Episode count is deliberately not monotonic: two adjacent same-token
+    events collapse into one when the window spans both. Documents the intended
+    de-duplication so a rising window can't inflate the count."""
+    p_ref = [2.0, 2.0]
+    p_eng = [2.0, 2.0]
+    assert windowed_conflict_aggregates(p_ref, p_eng, 1.0, 1.0, window=0)["conflict_episodes"] == 2
+    assert windowed_conflict_aggregates(p_ref, p_eng, 1.0, 1.0, window=1)["conflict_episodes"] == 1
+
+
+def test_windowed_empty_series_is_no_measurement() -> None:
+    agg = windowed_conflict_aggregates([], [], theta_ref=1.0, theta_eng=1.0, window=2)
+    assert agg["windowed_max_conflict_score"] is None
+    assert agg["any_conflict"] is False
+    assert agg["conflict_episodes"] == 0
+    assert agg["n_tokens"] == 0
+
+
+def test_windowed_requires_equal_length_series() -> None:
+    with pytest.raises(ValueError):
+        windowed_conflict_aggregates([1.0, 2.0], [1.0], theta_ref=1.0, theta_eng=1.0, window=1)
+
+
+def test_windowed_rejects_negative_window() -> None:
+    with pytest.raises(ValueError):
+        windowed_conflict_aggregates([1.0], [1.0], theta_ref=1.0, theta_eng=1.0, window=-1)
+
+
+def test_windowed_rejects_nonpositive_thresholds() -> None:
+    with pytest.raises(ValueError):
+        windowed_conflict_aggregates([1.0], [1.0], theta_ref=0.0, theta_eng=1.0, window=0)

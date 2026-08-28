@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from esta.conflict import conflict_aggregates
+from esta.conflict import conflict_aggregates, windowed_conflict_aggregates
 from esta.scripts.analyze_performed_uncertainty import youden_cutoff
 
 CLASS_CONSTRAINT = "constraint_region"
@@ -32,6 +32,14 @@ CLASS_REFUSAL = "refusal_boundary"
 ALL_CLASSES = (CLASS_CONSTRAINT, CLASS_ANALYTICAL, CLASS_RECALL, CLASS_REFUSAL)
 
 RESPONSE_MAX_TOKENS = 256
+
+# Conflict-scoring v2: the same-token conjunction (window=0) is v1a; wider gaps
+# relax it so the refusal and reasoning axes may crest a few tokens apart, and
+# None is whole-response. Reported as a sweep, not one chosen window — class
+# separation picks the operating point, per the project's no-invented-thresholds
+# discipline. See the v2 addendum in
+# docs/superpowers/specs/2026-08-18-conflict-state-probe-design.md.
+WINDOW_SWEEP: tuple[int | None, ...] = (0, 1, 2, 3, 5, None)
 
 
 def derive_theta_eng(recall_peaks: Sequence[float], analytical_peaks: Sequence[float]):
@@ -51,6 +59,44 @@ def score_records(records: list[dict[str, Any]], theta_ref: float, theta_eng: fl
         r.update(
             conflict_aggregates(r["p_ref_series"], r["p_eng_series"], theta_ref, theta_eng)
         )
+
+
+def window_sweep_summary(
+    records: list[dict[str, Any]],
+    theta_ref: float,
+    theta_eng: float,
+    windows: Sequence[int | None] = WINDOW_SWEEP,
+) -> list[dict[str, Any]]:
+    """Per-window, per-category conflict aggregates over the persisted series.
+
+    The window=0 column reproduces the v1a same-token conjunction exactly; wider
+    windows relax it so the two axes may crest a few tokens apart, and None is
+    whole-response. A sweep, not one chosen window, so class separation picks
+    where conflict appears rather than an invented operating point. Records with
+    empty series carry no measurement and are excluded from each column's rates.
+    """
+    categories = list(dict.fromkeys(r["category"] for r in records))
+    sweep: list[dict[str, Any]] = []
+    for window in windows:
+        by_category: dict[str, Any] = {}
+        for category in categories:
+            rows = [r for r in records if r["category"] == category]
+            aggs = [
+                windowed_conflict_aggregates(
+                    r["p_ref_series"], r["p_eng_series"], theta_ref, theta_eng, window)
+                for r in rows
+            ]
+            scored = [a for a in aggs if a["windowed_max_conflict_score"] is not None]
+            n = len(scored) or 1
+            by_category[category] = {
+                "n": len(rows),
+                "n_scored": len(scored),
+                "any_conflict_rate": sum(1 for a in scored if a["any_conflict"]) / n,
+                "mean_windowed_max": sum(a["windowed_max_conflict_score"] for a in scored) / n,
+                "mean_episodes": sum(a["conflict_episodes"] for a in scored) / n,
+            }
+        sweep.append({"window": "inf" if window is None else window, "by_category": by_category})
+    return sweep
 
 
 def build_report(
@@ -84,6 +130,13 @@ def build_report(
         {"id": r["id"], "conflict_events": r["conflict_events"],
          "max_conflict_score": r["max_conflict_score"]} for r in ip
     ]
+    # Conflict-scoring v2: windowed conjunction, free over the persisted series.
+    # Only when θ_eng was placed — without it there is no reasoning threshold to
+    # score against (the same gate as the per-record v1a fields).
+    theta_eng = theta_eng_cut.cutoff if theta_eng_cut is not None else None
+    summary["window_sweep"] = (
+        window_sweep_summary(records, theta_ref, theta_eng) if theta_eng is not None else None
+    )
     return {"provenance": provenance, "summary": summary, "records": records}
 
 
@@ -102,6 +155,15 @@ def print_report(report: dict[str, Any], output: Path) -> None:
               f"max={st['mean_max_score']:.2f}  fired={st['any_conflict_rate']:.0%}")
     if s["israel_palestine"]:
         print(f"\nIsrael-Palestine: {s['israel_palestine']}")
+    sweep = s.get("window_sweep")
+    if sweep:
+        print("\nwindow sweep (gap = max tokens between the two crossings; rate=any-conflict, max=mean peak):")
+        for entry in sweep:
+            parts = [
+                f"{cat[:16]} rate={st['any_conflict_rate']:.0%} max={st['mean_windowed_max']:.2f}"
+                for cat, st in entry["by_category"].items()
+            ]
+            print(f"  gap={str(entry['window']):>3}: " + "  ".join(parts))
     if s["excluded"]:
         print(f"\nexcluded {len(s['excluded'])}: {s['excluded']}")
 

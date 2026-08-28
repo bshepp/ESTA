@@ -243,7 +243,8 @@ event definition, not the machinery, is what suppresses the count.
 - **Conflict scoring v2:** replace the strict same-token conjunction with a **windowed** one — both
   axes crossing within a small token window, or both crossing anywhere in the response — analogous
   to the thresholding v2 the performed-uncertainty run forced. The persisted per-token series make
-  this a free offline `--rescore`-style re-measurement; no GPU needed.
+  this a free offline `--rescore`-style re-measurement; no GPU needed. **Done — see
+  [Conflict scoring v2](#conflict-scoring-v2--windowed-conjunction-measured-2026-08-28).**
 - **Positive-set targeting:** the refusal-vs-reasoning flavor's natural home turned out to be
   refusal *bait*, which is not "conflict" in the intended sense. Contested-topic conflict, if it
   exists on this model, is more likely **framing-vs-framing** (two content directions) — which is
@@ -253,6 +254,58 @@ event definition, not the machinery, is what suppresses the count.
 - The machinery itself is sound: both axes are well-identified, both thresholds well-placed, the
   score orders the classes monotonically, and the 0-event result is a real property of the
   model+definition, not a bug. Nothing here justifies a served `conflict_state` field yet.
+
+## Conflict scoring v2 — windowed conjunction (measured 2026-08-28)
+
+Finding #2 predicted the same-token `min ≥ 1` conjunction was too strict: on refusal-bait the two
+axes crested a token or two apart, so a real co-activation missed by 0.011. v2 relaxes the
+conjunction to a **token window** — `min(max s_ref, max s_eng)` over a sliding span of `gap + 1`
+tokens (`gap = 0` is exactly v1a; `gap = ∞` is both axes crossing anywhere in the response). The
+per-token series were persisted, so this was a **free offline `--rescore`** of the 2026-08-19 report
+— no model, no GPU. The report now always carries a `window_sweep` block; `gap = 0` reproduces the
+v1a numbers exactly (pinned by a regression test).
+
+**any-conflict rate (mean windowed-max peak) by class, across the window sweep:**
+
+| gap (max tokens apart) | constraint_region | uncontested_analytical | direct_recall | refusal_boundary |
+| --- | --- | --- | --- | --- |
+| **0** (v1a, same token) | 0% (0.46) | 0% (0.36) | 0% (0.02) | 0% (0.81) |
+| 1 | 0% (0.46) | 0% (0.36) | 0% (0.03) | **47%** (0.95) |
+| 2 | 0% (0.46) | 0% (0.36) | 0% (0.03) | 47% (0.96) |
+| 3 | 0% (0.46) | 0% (0.36) | 0% (0.03) | 47% (0.96) |
+| 5 | 0% (0.47) | 0% (0.36) | 0% (0.03) | 53% (0.99) |
+| **∞** (whole response) | 0% (0.47) | 0% (0.36) | 0% (0.04) | **67%** (1.02) |
+
+**Finding #2 is confirmed and quantified.** Relaxing to a **single-token gap already flips 7/15 of
+refusal-bait into conflict events** (0% → 47%); the near-misses were mostly one token apart, not the
+two the single-prompt diagnostic showed. Widening further recovers the rest of the class that ever
+crosses both axes — 8/15 at gap 5, **10/15 at whole-response** — which matches the v1a observation
+that 10/15 refusal-bait responses crossed θ_eng at all. So the same-token rule, not the machinery,
+was suppressing the count.
+
+**And the relaxation is discriminating, not a blunt instrument.** The three true negatives stay flat
+at **0% across every window** — constraint_region 0.46→0.47, uncontested_analytical 0.36, direct_recall
+0.02→0.04 — because widening a window cannot manufacture a crossing on an axis that never crosses.
+Only refusal-bait, the one class where *both* axes actually cross, responds to the window. The
+windowed score therefore separates "both axes cross, a few tokens apart" from "only one axis crosses"
+exactly as intended. Israel-Palestine (`constraint_001`, `constraint_003`) is unchanged at 0 events
+under every window — refusal never crosses there, so no gap helps.
+
+**What this does and doesn't settle.** It settles the event-definition question: v1a's machinery can
+fire, and the same-token rule was the thing hiding it. It does **not** revive the constraint region —
+that class's refusal axis is cold (0/25 cross θ_ref) regardless of window, so windowing is powerless
+there by construction. And the class it *does* light up is refusal *bait* — the model refusing and
+reasoning about its refusal — which is not "conflict" in the intended contested-topic sense. So the
+v2 conclusion reinforces the v1a one: **the refusal-vs-reasoning axis pair is now validated
+machinery with a working event definition, still awaiting a positive set that lights both axes
+together — which points at v1b (framing-vs-framing), not a wider window.** Nothing here justifies a
+served `conflict_state` field yet.
+
+**Operating point.** No single `gap` is blessed. The sweep is reported so separation speaks: on this
+model the true negatives are gap-invariant, so any `gap ≥ 1` is safe against them, and `gap = 1`
+already captures the bulk of the recoverable refusal-bait signal. The eventual served field, once it
+has a real positive set, should carry `gap` as a calibrated parameter chosen the same way θ_eng was —
+by class separation, not decree.
 
 ## Open questions
 

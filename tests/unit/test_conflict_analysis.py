@@ -8,10 +8,17 @@ from esta.scripts.analyze_conflict_state import (
     CLASS_ANALYTICAL,
     CLASS_CONSTRAINT,
     CLASS_RECALL,
+    WINDOW_SWEEP,
     build_report,
     derive_theta_eng,
     score_records,
+    window_sweep_summary,
 )
+
+
+def _win(sweep, key):
+    """Fetch the sweep entry for a window (int, or 'inf' for whole-response)."""
+    return next(e for e in sweep if e["window"] == key)
 
 
 def test_theta_eng_separates_recall_from_analytical() -> None:
@@ -55,6 +62,78 @@ def test_build_report_summarizes_by_category_and_flags_israel_palestine() -> Non
     assert by_cat[CLASS_RECALL]["mean_conflict_events"] == pytest.approx(0.0)
     # constraint fires, recall does not -> the intended contrast
     assert by_cat[CLASS_CONSTRAINT]["mean_max_score"] > by_cat[CLASS_RECALL]["mean_max_score"]
+
+
+# --- window_sweep_summary (v2) ------------------------------------------------
+
+
+def test_window_sweep_zero_column_reproduces_v1a_aggregates() -> None:
+    """The sweep's window=0 column must equal conflict_aggregates on the same
+    records, so the published v1a numbers stay the sweep's anchored baseline."""
+    records = [_rec("c0", CLASS_CONSTRAINT, [2.0, 0.5, 3.0], [2.0, 2.0, 0.4])]
+    score_records(records, theta_ref=1.0, theta_eng=1.0)  # adds v1a max_conflict_score
+    sweep = window_sweep_summary(records, theta_ref=1.0, theta_eng=1.0)
+    w0 = _win(sweep, 0)["by_category"][CLASS_CONSTRAINT]
+    assert w0["mean_windowed_max"] == pytest.approx(records[0]["max_conflict_score"])
+    assert w0["any_conflict_rate"] == pytest.approx(1.0)  # v1a fired at same token here
+
+
+def test_window_sweep_widens_to_catch_split_peaks() -> None:
+    """A record whose axes peak two tokens apart is quiet at window 0/1 and fires
+    at window 2 — the boundary_004 diagnostic, at the class-summary level."""
+    records = [
+        _rec("c0", CLASS_CONSTRAINT, [0.0, 0.0, 2.0], [2.0, 0.0, 0.0]),  # gap-2 split
+        _rec("c1", CLASS_CONSTRAINT, [0.1, 0.1, 0.1], [0.1, 0.1, 0.1]),  # cold
+    ]
+    sweep = window_sweep_summary(records, theta_ref=1.0, theta_eng=1.0)
+    assert _win(sweep, 0)["by_category"][CLASS_CONSTRAINT]["any_conflict_rate"] == 0.0
+    assert _win(sweep, 1)["by_category"][CLASS_CONSTRAINT]["any_conflict_rate"] == 0.0
+    assert _win(sweep, 2)["by_category"][CLASS_CONSTRAINT]["any_conflict_rate"] == pytest.approx(0.5)
+
+
+def test_window_sweep_covers_the_full_window_set_including_whole_response() -> None:
+    records = [_rec("c0", CLASS_CONSTRAINT, [2.0], [2.0])]
+    sweep = window_sweep_summary(records, theta_ref=1.0, theta_eng=1.0)
+    windows = [e["window"] for e in sweep]
+    assert windows == [w if w is not None else "inf" for w in WINDOW_SWEEP]
+    assert "inf" in windows  # whole-response column present
+
+
+def test_window_sweep_excludes_empty_series_from_scoring() -> None:
+    records = [
+        _rec("c0", CLASS_CONSTRAINT, [2.0], [2.0]),
+        _rec("c1", CLASS_CONSTRAINT, [], []),  # no tokens -> unscored
+    ]
+    stats = _win(window_sweep_summary(records, 1.0, 1.0), 0)["by_category"][CLASS_CONSTRAINT]
+    assert stats["n"] == 2
+    assert stats["n_scored"] == 1
+
+
+def test_build_report_emits_window_sweep_when_theta_eng_placed() -> None:
+    records = [
+        _rec(f"r{i}", CLASS_RECALL, [0.1], [0.1]) for i in range(8)
+    ] + [
+        _rec(f"a{i}", CLASS_ANALYTICAL, [0.1], [2.0]) for i in range(8)
+    ]
+    score_records(records, theta_ref=1.0, theta_eng=1.5)
+    cut = derive_theta_eng(
+        [max(r["p_eng_series"]) for r in records if r["category"] == CLASS_RECALL],
+        [max(r["p_eng_series"]) for r in records if r["category"] == CLASS_ANALYTICAL],
+    )
+    report = build_report(records, excluded=[], provenance={"model": "m"},
+                          theta_ref=1.0, theta_eng_cut=cut)
+    assert report["summary"]["window_sweep"] is not None
+    assert _win(report["summary"]["window_sweep"], 0)  # window 0 present
+
+
+def test_build_report_omits_window_sweep_when_theta_eng_absent() -> None:
+    # When θ_eng does not separate, _finish sets the v1a fields to None before
+    # calling build_report; the sweep has no reasoning threshold to score against.
+    records = [_rec("c0", CLASS_CONSTRAINT, [2.0], [2.0])]
+    records[0].update({"max_conflict_score": None, "conflict_events": 0})
+    report = build_report(records, excluded=[], provenance={"model": "m"},
+                          theta_ref=1.0, theta_eng_cut=None)
+    assert report["summary"]["window_sweep"] is None
 
 
 def _prior(rid, category, p_ref, p_eng, topic="neutral"):
