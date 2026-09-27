@@ -69,10 +69,19 @@ def test_build_report_summarizes_and_flags_israel_palestine() -> None:
     )
     score_records(records, theta_a=1.0, theta_b=1.0, window=2)
     report = build_report(records, excluded=[], provenance={"model": "m"},
-                          theta_a_cut=None, theta_b_cut=None, instability_null=0.5)
+                          theta_a_cut=None, theta_b_cut=None, instability_null=0.5, window=2)
+    assert report["summary"]["window"] == 2
     by_cat = report["summary"]["by_category"]
     assert by_cat[CLASS_TWO_SIDED]["coactivation_rate"] == pytest.approx(1.0)
     assert by_cat[CLASS_ONE_A]["coactivation_rate"] == pytest.approx(0.0)
     # the control contrast: two-sided co-activates, one-sided does not
     assert by_cat[CLASS_TWO_SIDED]["mean_instability"] > by_cat[CLASS_ONE_A]["mean_instability"]
     assert report["summary"]["israel_palestine"]  # broken out by name
+
+
+def test_build_report_records_the_window() -> None:
+    # window must be recorded verbatim, not hardcoded to DEFAULT_WINDOW.
+    records = [_rec("t1", CLASS_NEUTRAL, [0.1], [0.1], ["a b", "a b"], topic="energy")]
+    report = build_report(records, excluded=[], provenance={"model": "m"},
+                          theta_a_cut=None, theta_b_cut=None, instability_null=None, window=5)
+    assert report["summary"]["window"] == 5

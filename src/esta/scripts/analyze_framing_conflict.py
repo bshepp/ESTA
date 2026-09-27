@@ -45,7 +45,7 @@ def response_divergence(a: str, b: str) -> float | None:
 
 
 def mean_pairwise_divergence(responses: Sequence[str]) -> float | None:
-    """Mean divergence over all response pairs; None if fewer than two usable pairs.
+    """Mean divergence over all response pairs; None when there are no usable pairs.
 
     Undefined pairs (empty response) are skipped, not scored as zero -- an
     absence of content is not agreement.
@@ -97,13 +97,13 @@ def _rate(flags):
     return sum(vals) / len(vals) if vals else None
 
 
-def build_report(records, excluded, provenance, theta_a_cut, theta_b_cut, instability_null):  # noqa: ANN001
+def build_report(records, excluded, provenance, theta_a_cut, theta_b_cut, instability_null, window):  # noqa: ANN001
     """Summarize by category and report the internal-vs-instability contrast. Torch-free."""
     summary: dict[str, Any] = {
         "theta_a": asdict(theta_a_cut) if theta_a_cut else None,
         "theta_b": asdict(theta_b_cut) if theta_b_cut else None,
         "instability_null": instability_null,
-        "window": DEFAULT_WINDOW,
+        "window": window,
         "excluded": excluded,
         "by_category": {},
     }
