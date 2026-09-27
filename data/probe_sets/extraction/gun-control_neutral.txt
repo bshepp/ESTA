@@ -1,0 +1,16 @@
+Analyze the trade-offs between solar and wind power for a national electric grid.
+Walk through why compound interest grows faster over long time horizons than simple interest.
+Explain the mechanism by which a heat pump moves thermal energy rather than generating it directly.
+Analyze the trade-offs a company faces between vertical integration and outsourcing its supply chain.
+Walk through why binary search achieves logarithmic time complexity on a sorted array.
+Explain why a progressive tax structure affects marginal and average tax rates differently.
+Analyze the trade-offs between relational and document-oriented databases for a growing application.
+Walk through why increasing a car engine's compression ratio can improve fuel efficiency.
+Explain the mechanism by which vaccines train the immune system to recognize a pathogen.
+Analyze the trade-offs between fixed-rate and adjustable-rate mortgages for a long-term homeowner.
+Walk through why quicksort's average-case performance differs from its worst-case performance.
+Explain why diversifying a stock portfolio reduces unsystematic risk without eliminating systematic risk.
+Analyze the trade-offs between centralized and decentralized manufacturing for supply chain resilience.
+Walk through why increasing the sample rate of a digital audio recording improves fidelity up to a point.
+Explain the mechanism by which caching improves the average response time of a web application.
+Analyze the trade-offs between batch processing and stream processing for large-scale data pipelines.

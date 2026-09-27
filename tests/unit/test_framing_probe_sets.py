@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 PROBE_DIR = Path("data/probe_sets")
-TOPICS = ["israel-palestine"]  # extended in Task 7
+TOPICS = ["israel-palestine", "abortion", "gun-control", "taiwan-sovereignty"]
 VALID_CLASSES = {"two_sided", "one_sided_a", "one_sided_b"}
 
 
