@@ -242,6 +242,34 @@ A10G run. The run is **held for the originator's explicit instruction** (like ev
 prior AWS run) and gated behind spec + plan review; the offline scripts, probe sets, tests, and the
 teed-up run script are built first.
 
+## Build notes (implemented 2026-09-27, subagent-driven)
+
+Refinements made during implementation and the whole-branch review, recorded so the spec matches
+what shipped:
+
+- **Authored per-prompt paraphrases (preferred over the programmatic fallback).** The perturbation
+  family is meant to be *meaning-preserving rewordings of the ask*. The built-in programmatic
+  `_paraphrases` only varies the instruction *framing* (it keeps the ask verbatim), which under greedy
+  decoding may barely move the response — a floor-effect risk for the instability signal. So
+  `_generate_records` uses `_perturbation_prompts(prompt, k)`: if a probe prompt carries a non-empty
+  `"paraphrases"` list it is used verbatim; otherwise the weak programmatic default is the fallback.
+  Authoring strong per-prompt paraphrases is the quality lever and is left as curation follow-up.
+- **The report computes the conclusion, not just the inputs.** `build_report` now emits a per-record
+  `unstable` flag (`instability > instability_null`), an `unstable_rate` per class, and an
+  `internal_vs_instability` block: for `coactivation_max` and `oscillation`, the unstable-vs-stable
+  means and a `mann_whitney_p` (one-sided, testing whether the internal signal ranks higher on
+  unstable prompts). This is the spec's headline claim, surfaced by the tool rather than left to
+  manual post-processing.
+- **The local smoke is a HARD GATE before the paid run.** Because the paraphrase signal's
+  discriminating power cannot be settled offline, the tiny-model smoke (and the eventual on-box
+  check) must confirm `two_sided` instability meaningfully exceeds `one_sided` and that θ_A/θ_B land
+  positive. If instability floors, the fix is to author per-prompt paraphrases and/or bring forward
+  the deferred `two_sided`-only side-order-swap perturbation (v1b.1) — not to spend on an
+  uninformative run.
+- **Contested probe sets merit a human domain read before the run.** The Israel-Palestine set went
+  through three balance-review rounds and the other three topics one; balance on contested topics is
+  inherently subjective, so the originator's read is the intended final arbiter before extraction.
+
 ## Open questions
 
 None blocking. Decisions made during brainstorming (2026-09-27): per-topic narrative pairs (not a
