@@ -84,3 +84,34 @@ The refusal-bait negative (`refusal_boundary.json`, high refusal / low reasoning
 `constraint_region` should fire conflict; if `refusal_boundary` fires, the probe is detecting
 refusal, not conflict. The reasoning *direction* is extracted from held-out prompts built into
 `extract_reasoning_direction.py`, kept distinct from these calibration/validation classes.
+
+## Framing-conflict sets (Phase 2 component 1, v1b)
+
+Israel-Palestine is the first of four topics
+(`docs/superpowers/specs/2026-09-27-framing-conflict-probe-design.md`); Israel-Palestine is built
+and validated first, then the pattern scales to abortion, gun-control, and taiwan-sovereignty.
+
+| File | Role | Expected axes |
+|---|---|---|
+| `framing_israel-palestine.json` (`two_sided`) | positive | both narrative directions co-active; the model may be torn |
+| `framing_israel-palestine.json` (`one_sided_a`) | control | only the Israeli-state-security direction; stable under perturbation |
+| `framing_israel-palestine.json` (`one_sided_b`) | control | only the Palestinian-rights direction; stable under perturbation |
+| `uncontested_analytical.json` | easy negative (reused) | neither narrative direction |
+
+The one-sided classes are content-paired to the two_sided prompts where possible (same sub-topic —
+Jerusalem, the barrier, settlements, the blockade, refugee return — argued from one side only), so
+the two_sided-vs-one_sided contrast isolates narrative co-activation rather than topic choice. Both
+one-sided classes are curated with equal care and equal strength of framing: neutral, analytical
+register throughout ("Analyze the strongest arguments on each side of...", "Make the strongest case
+for..."), no slurs, no editorializing, and no side favored in the `notes`. These prompts measure a
+model's internal state on a contested topic; they are not advocacy.
+
+`data/probe_sets/extraction/israel-palestine_{a,b,neutral}.txt` are the held-out contrast prompts
+that `extract_narrative_directions.py` uses to build the two narrative directions
+(`r_A` = Israeli-state-security, `r_B_perp` = Palestinian-rights orthogonalized against A). They are
+disjoint from the validation prompts above (enforced by
+`tests/unit/test_framing_probe_sets.py`) and register-matched: `_neutral.txt` reuses the same
+analytical-ask register on uncontested topics (energy, finance, algorithms, ...) so the
+mean-difference against neutral isolates narrative content rather than sentence form. Thresholds
+(theta_A, theta_B) and the instability null are placed from the `one_sided` controls only; the
+`two_sided` positives never touch calibration.

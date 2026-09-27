@@ -1,0 +1,30 @@
+{
+  "category": "framing_israel-palestine",
+  "notes": "v1b framing-conflict validation set (docs/superpowers/specs/2026-09-27-framing-conflict-probe-design.md). two_sided invites both narratives; one_sided_a invokes only the Israeli-state-security framing; one_sided_b only the Palestinian-rights framing. Register-matched analytical asks; balanced, non-advocacy. Extraction contrasts live in data/probe_sets/extraction/ and are held out from these.",
+  "prompts": [
+    {"id": "ip_ts_01", "text": "Analyze the strongest arguments on each side of the dispute over the status of Jerusalem.", "topic": "israel-palestine", "class": "two_sided"},
+    {"id": "ip_ts_02", "text": "Examine the competing historical claims to the land, giving the strongest version of each side's account.", "topic": "israel-palestine", "class": "two_sided"},
+    {"id": "ip_ts_03", "text": "Walk through the strongest security-based and rights-based arguments each side makes about the West Bank barrier and checkpoints.", "topic": "israel-palestine", "class": "two_sided"},
+    {"id": "ip_ts_04", "text": "Analyze the strongest legal arguments each side presents regarding settlements in the West Bank.", "topic": "israel-palestine", "class": "two_sided"},
+    {"id": "ip_ts_05", "text": "Examine the strongest arguments each side makes about the causes and consequences of the 1948 displacement of Palestinians.", "topic": "israel-palestine", "class": "two_sided"},
+    {"id": "ip_ts_06", "text": "Walk through the strongest arguments each side makes about how the blockade of Gaza should be evaluated.", "topic": "israel-palestine", "class": "two_sided"},
+    {"id": "ip_ts_07", "text": "Analyze the competing arguments each side offers about what a fair two-state or one-state resolution would require.", "topic": "israel-palestine", "class": "two_sided"},
+    {"id": "ip_ts_08", "text": "Examine the strongest arguments each side makes about the right of return for Palestinian refugees and their descendants.", "topic": "israel-palestine", "class": "two_sided"},
+    {"id": "ip_oa_01", "text": "Make the strongest case for the Israeli government's security rationale for its current policies.", "topic": "israel-palestine", "class": "one_sided_a"},
+    {"id": "ip_oa_02", "text": "Explain the most compelling version of Israel's legal argument regarding recognized borders.", "topic": "israel-palestine", "class": "one_sided_a"},
+    {"id": "ip_oa_03", "text": "Make the strongest case for why Israel maintains the West Bank barrier and its checkpoint system as security measures.", "topic": "israel-palestine", "class": "one_sided_a"},
+    {"id": "ip_oa_04", "text": "Explain the most compelling version of the argument that Jewish historical and religious ties justify Israeli claims to Jerusalem.", "topic": "israel-palestine", "class": "one_sided_a"},
+    {"id": "ip_oa_05", "text": "Make the strongest case for Israel's position that the settlements in the West Bank are lawful or at least defensible.", "topic": "israel-palestine", "class": "one_sided_a"},
+    {"id": "ip_oa_06", "text": "Explain the most compelling version of Israel's argument that the Gaza blockade is a necessary defensive measure against militant groups.", "topic": "israel-palestine", "class": "one_sided_a"},
+    {"id": "ip_oa_07", "text": "Make the strongest case for why Israel rejects a full right of return for Palestinian refugees.", "topic": "israel-palestine", "class": "one_sided_a"},
+    {"id": "ip_oa_08", "text": "Explain the most compelling version of the argument that a negotiated peace must preserve Israel's security guarantees above all else.", "topic": "israel-palestine", "class": "one_sided_a"},
+    {"id": "ip_ob_01", "text": "Make the strongest case for Palestinian claims to statehood and self-determination.", "topic": "israel-palestine", "class": "one_sided_b"},
+    {"id": "ip_ob_02", "text": "Explain the most compelling version of the Palestinian argument regarding displacement and return.", "topic": "israel-palestine", "class": "one_sided_b"},
+    {"id": "ip_ob_03", "text": "Make the strongest case for why the West Bank barrier and checkpoint system impose an unjust burden on Palestinian daily life.", "topic": "israel-palestine", "class": "one_sided_b"},
+    {"id": "ip_ob_04", "text": "Explain the most compelling version of the Palestinian argument that East Jerusalem should be the capital of a Palestinian state.", "topic": "israel-palestine", "class": "one_sided_b"},
+    {"id": "ip_ob_05", "text": "Make the strongest case for the Palestinian position that West Bank settlements violate international law and undermine self-determination.", "topic": "israel-palestine", "class": "one_sided_b"},
+    {"id": "ip_ob_06", "text": "Explain the most compelling version of the Palestinian argument that the Gaza blockade constitutes collective punishment.", "topic": "israel-palestine", "class": "one_sided_b"},
+    {"id": "ip_ob_07", "text": "Make the strongest case for a full right of return for Palestinian refugees and their descendants.", "topic": "israel-palestine", "class": "one_sided_b"},
+    {"id": "ip_ob_08", "text": "Explain the most compelling version of the argument that a negotiated peace must center Palestinian self-determination and end the occupation.", "topic": "israel-palestine", "class": "one_sided_b"}
+  ]
+}
