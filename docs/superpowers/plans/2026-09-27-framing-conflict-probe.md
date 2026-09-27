@@ -461,7 +461,7 @@ git commit -s -m "feat(framing): narrative-direction extraction CLI (torch in ma
   - `mean_pairwise_divergence(responses: Sequence[str]) -> float | None`
   - `derive_theta(high_peaks, low_peaks)` -> AxisCut|None (delegates to `youden_cutoff`)
   - `score_records(records, theta_a, theta_b, window) -> None` (adds co-activation, oscillation, instability fields in place)
-  - `build_report(records, excluded, provenance, theta_a_cut, theta_b_cut, instability_null) -> dict`
+  - `build_report(records, excluded, provenance, theta_a_cut, theta_b_cut, instability_null, window) -> dict` (`window` REQUIRED — recorded verbatim into `summary["window"]`; never defaulted, so a non-default `--window` run cannot misreport its own parameter)
   - `print_report(report, output: Path) -> None` (ASCII-safe)
   - `parse_args`, `_load_rescore`
 
@@ -540,7 +540,8 @@ def test_build_report_summarizes_and_flags_israel_palestine() -> None:
     )
     score_records(records, theta_a=1.0, theta_b=1.0, window=2)
     report = build_report(records, excluded=[], provenance={"model": "m"},
-                          theta_a_cut=None, theta_b_cut=None, instability_null=0.5)
+                          theta_a_cut=None, theta_b_cut=None, instability_null=0.5, window=2)
+    assert report["summary"]["window"] == 2  # recorded verbatim, not hardcoded
     by_cat = report["summary"]["by_category"]
     assert by_cat[CLASS_TWO_SIDED]["coactivation_rate"] == pytest.approx(1.0)
     assert by_cat[CLASS_ONE_A]["coactivation_rate"] == pytest.approx(0.0)
@@ -657,13 +658,18 @@ def _rate(flags):
     return sum(vals) / len(vals) if vals else None
 
 
-def build_report(records, excluded, provenance, theta_a_cut, theta_b_cut, instability_null):  # noqa: ANN001
-    """Summarize by category and report the internal-vs-instability contrast. Torch-free."""
+def build_report(records, excluded, provenance, theta_a_cut, theta_b_cut, instability_null, window):  # noqa: ANN001
+    """Summarize by category and report the internal-vs-instability contrast. Torch-free.
+
+    `window` is recorded verbatim into the summary so the report never misstates
+    the co-activation window actually used to score (a --window != default run
+    must not silently report DEFAULT_WINDOW). Required, never defaulted.
+    """
     summary: dict[str, Any] = {
         "theta_a": asdict(theta_a_cut) if theta_a_cut else None,
         "theta_b": asdict(theta_b_cut) if theta_b_cut else None,
         "instability_null": instability_null,
-        "window": DEFAULT_WINDOW,
+        "window": window,
         "excluded": excluded,
         "by_category": {},
     }
@@ -851,7 +857,7 @@ def _finish(records, excluded, provenance, window):  # noqa: ANN001
     theta_b = theta_b_cut.cutoff if theta_b_cut is not None else None
     score_records(records, theta_a, theta_b, window)
     return build_report(records, excluded, provenance, theta_a_cut, theta_b_cut,
-                        _instability_null(records))
+                        _instability_null(records), window)
 
 
 # Neutral paraphrase templates (shared perturbation family, all classes) and the
