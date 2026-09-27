@@ -26,7 +26,7 @@ from typing import Any
 from esta.conflict import windowed_conflict_aggregates
 from esta.fidelity import convergence, nearest_rank_percentile
 from esta.oscillation import oscillation_rate
-from esta.scripts.analyze_performed_uncertainty import youden_cutoff
+from esta.scripts.analyze_performed_uncertainty import mann_whitney_p, youden_cutoff
 
 CLASS_TWO_SIDED = "two_sided"
 CLASS_ONE_A = "one_sided_a"
@@ -99,6 +99,15 @@ def _rate(flags):
 
 def build_report(records, excluded, provenance, theta_a_cut, theta_b_cut, instability_null, window):  # noqa: ANN001
     """Summarize by category and report the internal-vs-instability contrast. Torch-free."""
+    # instability_null is None means no calibrated threshold exists yet -- leave
+    # every record's flag undefined (None) rather than defaulting it to "stable".
+    for r in records:
+        inst = r.get("instability")
+        r["unstable"] = (
+            None if instability_null is None
+            else bool(inst is not None and inst > instability_null)
+        )
+
     summary: dict[str, Any] = {
         "theta_a": asdict(theta_a_cut) if theta_a_cut else None,
         "theta_b": asdict(theta_b_cut) if theta_b_cut else None,
@@ -115,7 +124,30 @@ def build_report(records, excluded, provenance, theta_a_cut, theta_b_cut, instab
             "mean_coactivation_max": _mean([r.get("coactivation_max") for r in rows]),
             "mean_oscillation": _mean([r.get("oscillation") for r in rows]),
             "mean_instability": _mean([r.get("instability") for r in rows]),
+            "unstable_rate": _rate([r.get("unstable") for r in rows]),
         }
+
+    # Does the internal (co-activation/oscillation) signal track the independent
+    # perturbation-instability signal? Compare records flagged unstable against
+    # records flagged stable; None when either side lacks a usable sample.
+    internal_vs_instability: dict[str, Any] = {}
+    for field in ("coactivation_max", "oscillation"):
+        unstable_vals = [r[field] for r in records
+                         if r.get("unstable") is True and r.get(field) is not None]
+        stable_vals = [r[field] for r in records
+                       if r.get("unstable") is False and r.get(field) is not None]
+        if not unstable_vals or not stable_vals:
+            internal_vs_instability[field] = None
+        else:
+            internal_vs_instability[field] = {
+                "unstable_mean": _mean(unstable_vals),
+                "stable_mean": _mean(stable_vals),
+                "n_unstable": len(unstable_vals),
+                "n_stable": len(stable_vals),
+                "mann_whitney_p": mann_whitney_p(stable_vals, unstable_vals),
+            }
+    summary["internal_vs_instability"] = internal_vs_instability
+
     ip = [r for r in records if r.get("topic", "").lower().startswith("israel")]
     summary["israel_palestine"] = [
         {"id": r["id"], "category": r["category"],
@@ -132,13 +164,23 @@ def print_report(report: dict[str, Any], output: Path) -> None:
     ta = s["theta_a"]["cutoff"] if s["theta_a"] else None
     tb = s["theta_b"]["cutoff"] if s["theta_b"] else None
     print(f"theta_a={ta}  theta_b={tb}  window={s['window']}  instability_null={s['instability_null']}")
-    print("\nby category (coact rate / mean coact max / mean oscillation / mean instability):")
+
+    def _f(x):
+        return "n/a" if x is None else f"{x:.2f}"
+
+    print("\nby category (coact rate / mean coact max / mean oscillation / mean instability / "
+          "unstable rate):")
     for cat, st in s["by_category"].items():
-        def _f(x):
-            return "n/a" if x is None else f"{x:.2f}"
         print(f"  {cat:14} n={st['n']:3}  coact={_f(st['coactivation_rate'])}  "
               f"max={_f(st['mean_coactivation_max'])}  osc={_f(st['mean_oscillation'])}  "
-              f"instab={_f(st['mean_instability'])}")
+              f"instab={_f(st['mean_instability'])}  unstable={_f(st['unstable_rate'])}")
+    print("\ninternal signal vs instability (unstable mean / stable mean / mann-whitney p):")
+    for field, stat in s.get("internal_vs_instability", {}).items():
+        if stat is None:
+            print(f"  {field:18} n/a")
+        else:
+            print(f"  {field:18} unstable={_f(stat['unstable_mean'])}  "
+                  f"stable={_f(stat['stable_mean'])}  p={_f(stat['mann_whitney_p'])}")
     if s["israel_palestine"]:
         print(f"\nIsrael-Palestine: {s['israel_palestine']}")
     if s["excluded"]:
@@ -209,16 +251,41 @@ def _finish(records, excluded, provenance, window):  # noqa: ANN001
                         _instability_null(records), window)
 
 
-# Neutral paraphrase templates (shared perturbation family, all classes) and the
-# two-sided-only side-order swap are applied to prompt TEXT deterministically.
+# Neutral paraphrase templates, shared perturbation family across all classes.
 def _paraphrases(text: str, k: int) -> list[str]:
+    """WEAK deterministic perturbation fallback: reword the instruction framing only.
+
+    These stems vary the wrapper around the question, not the core ask itself,
+    so they are a weak proxy for a real re-framing perturbation -- a model that
+    is insensitive to instruction wording will look "stable" here even if it
+    would diverge under an actual re-framing. Authored per-prompt
+    `prompt["paraphrases"]` (see _perturbation_prompts) are preferred whenever
+    available, since they give a much stronger perturbation signal; this
+    fallback exists only for probe items that don't have any authored yet.
+    Deterministic and always returns exactly k items.
+    """
     stems = [
         "Consider the following question. {t}",
         "Please address this: {t}",
         "Here is a question to work through. {t}",
         "Respond to the following prompt. {t}",
+        "Take a moment to think through this. {t}",
+        "Here's something worth considering. {t}",
     ]
     return [stems[i % len(stems)].format(t=text) for i in range(k)]
+
+
+def _perturbation_prompts(prompt: dict, k: int) -> list[str]:
+    """Perturbation prompts for one probe item: authored paraphrases if present, else the fallback.
+
+    Authored `prompt["paraphrases"]` are curated re-framings that give a strong,
+    intentional perturbation signal; when absent (or empty), fall back to the
+    weak deterministic `_paraphrases`.
+    """
+    authored = prompt.get("paraphrases")
+    if authored:
+        return list(authored)[:k]
+    return _paraphrases(prompt["text"], k)
 
 
 def _generate_records(args):  # noqa: ANN001
@@ -279,7 +346,7 @@ def _generate_records(args):  # noqa: ANN001
                 excluded.append({"id": prompt["id"], "reason": "no tokens generated"})
                 continue
             perts = [base] + [_generate(t, hook_it=False)[0]
-                              for t in _paraphrases(prompt["text"], args.paraphrases)]
+                              for t in _perturbation_prompts(prompt, args.paraphrases)]
             records.append({
                 "id": prompt["id"], "category": cls, "topic": prompt.get("topic", args.topic),
                 "text": prompt["text"], "response": base,

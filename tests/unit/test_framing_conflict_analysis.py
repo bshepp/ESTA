@@ -8,6 +8,8 @@ from esta.scripts.analyze_framing_conflict import (
     CLASS_ONE_A,
     CLASS_ONE_B,
     CLASS_TWO_SIDED,
+    _paraphrases,
+    _perturbation_prompts,
     build_report,
     mean_pairwise_divergence,
     response_divergence,
@@ -78,6 +80,30 @@ def test_build_report_summarizes_and_flags_israel_palestine() -> None:
     assert by_cat[CLASS_TWO_SIDED]["mean_instability"] > by_cat[CLASS_ONE_A]["mean_instability"]
     assert report["summary"]["israel_palestine"]  # broken out by name
 
+    # unstable flag: two-sided (disjoint perturbations, instability 1.0) exceeds
+    # the null (0.5); one-sided/neutral (identical perturbations, 0.0) do not.
+    by_id = {r["id"]: r for r in report["records"]}
+    assert all(by_id[f"ts{i}"]["unstable"] is True for i in range(3))
+    assert all(by_id[f"oa{i}"]["unstable"] is False for i in range(3))
+    assert all(by_id[f"ob{i}"]["unstable"] is False for i in range(3))
+    assert all(by_id[f"nu{i}"]["unstable"] is False for i in range(3))
+    assert by_cat[CLASS_TWO_SIDED]["unstable_rate"] == pytest.approx(1.0)
+    assert by_cat[CLASS_ONE_A]["unstable_rate"] == pytest.approx(0.0)
+
+    # internal-vs-instability association: coactivation_max separates cleanly
+    # (two-sided co-activates, everyone else barely clears theta on a single
+    # token); oscillation is undefined (None) on every stable record here
+    # (only one engaged token each), so that field must report None rather
+    # than a bogus stat over an empty sample.
+    ivi = report["summary"]["internal_vs_instability"]
+    assert set(ivi.keys()) == {"coactivation_max", "oscillation"}
+    coact_stat = ivi["coactivation_max"]
+    assert coact_stat["n_unstable"] == 3
+    assert coact_stat["n_stable"] == 9
+    assert coact_stat["unstable_mean"] > coact_stat["stable_mean"]
+    assert 0.0 <= coact_stat["mann_whitney_p"] <= 1.0
+    assert ivi["oscillation"] is None
+
 
 def test_build_report_records_the_window() -> None:
     # window must be recorded verbatim, not hardcoded to DEFAULT_WINDOW.
@@ -85,6 +111,9 @@ def test_build_report_records_the_window() -> None:
     report = build_report(records, excluded=[], provenance={"model": "m"},
                           theta_a_cut=None, theta_b_cut=None, instability_null=None, window=5)
     assert report["summary"]["window"] == 5
+    # no instability null -> unstable is undefined, not falsely False
+    assert report["records"][0]["unstable"] is None
+    assert report["summary"]["internal_vs_instability"] == {"coactivation_max": None, "oscillation": None}
 
 
 def _prior(rid, category, p_a, p_b, perts, topic="israel-palestine"):
@@ -131,3 +160,23 @@ def test_rescore_refuses_corpus_missing_perturbations(tmp_path) -> None:  # noqa
     _write_prior(prior, [rec])
     with pytest.raises(SystemExit, match="perturbation_responses"):
         main(parse_args(["--rescore", str(prior), "--output", str(tmp_path / "o.json")]))
+
+
+def test_perturbation_prompts_uses_authored_paraphrases_when_present() -> None:
+    prompt = {"text": "base question", "paraphrases": ["p1", "p2", "p3", "p4"]}
+    # used verbatim, truncated to k -- not run through the programmatic fallback
+    assert _perturbation_prompts(prompt, 2) == ["p1", "p2"]
+
+
+def test_perturbation_prompts_falls_back_when_absent() -> None:
+    prompt = {"text": "base question"}
+    result = _perturbation_prompts(prompt, 3)
+    assert len(result) == 3
+    assert result == _paraphrases("base question", 3)
+
+
+def test_perturbation_prompts_falls_back_when_paraphrases_empty() -> None:
+    # an empty authored list is not a usable override -- fall back rather than
+    # perturbing with zero prompts.
+    prompt = {"text": "base question", "paraphrases": []}
+    assert _perturbation_prompts(prompt, 2) == _paraphrases("base question", 2)
