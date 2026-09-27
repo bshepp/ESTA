@@ -63,10 +63,12 @@ exclusive per token, so together they cover both:
      applied to `two_sided`, `one_sided_a`, and `one_sided_b` alike. This is the **primary**
      instability metric, so `two_sided` vs `one_sided` is apples-to-apples (same perturbation type,
      same register).
-   - **Side-order swap (`two_sided` only)** — present narrative A before B vs B before A. A torn
-     model lets presentation order bias its conclusion. Reported **separately** as an additional
-     two-sided sensitivity indicator, never mixed into the shared metric that the control comparison
-     rests on.
+   - **Side-order swap (`two_sided` only) — deferred to v1b.1.** Presenting narrative A before B
+     vs B before A would test whether presentation order biases a torn model's conclusion, reported
+     separately from the shared metric. It needs per-prompt swapped variants authored in the data
+     and a separate reporting path; rather than half-build it, this build ships the shared paraphrase
+     family (the primary, control-comparable metric) and leaves side-order swap as a documented
+     follow-on once the paraphrase signal is shown to carry.
 
 **The claim (success criterion):** co-activation and/or oscillation **predict** perturbation-
 instability, AND both internal signals plus instability are higher on `two_sided` prompts than on
@@ -133,15 +135,20 @@ Per topic, four classes under `data/probe_sets/` (never `data/validation_cases/`
 - **`neutral` (easy negative)** — analytical asks on uncontested topics. Neither axis; reuses the
   existing `uncontested_analytical.json`.
 
-Three **disjoint prompt pools** per direction, the v1a leakage discipline (extraction prompts are
-held out from what the direction is later measured on):
+The leakage discipline follows v1a exactly (which the sibling `analyze_conflict_state` embodies):
+two protections that matter, not three fully-disjoint pools.
 
-1. **Extraction** — argue-A / argue-B / neutral prompts that build `r_A`, `r_B⊥`. Built into the
-   extraction script's `--*-file` inputs, like `extract_reasoning_direction`.
-2. **Calibration** — held-out `one_sided_a` / `one_sided_b` prompts that place θ_A, θ_B and the
-   instability null. Never used for extraction.
-3. **Validation** — the `two_sided` positives + held-out one-sided + neutral, scored and reported.
-   Never used for extraction or calibration.
+1. **The extraction pool is fully held out.** The argue-A / argue-B / neutral prompts that build
+   `r_A`, `r_B⊥` (the extraction script's `--*-file` inputs) never appear in the validation sets —
+   the same rule `extract_reasoning_direction` follows with its held-out contrast prompts.
+2. **The positive set is never used to place thresholds.** θ_A, θ_B come only from the `one_sided`
+   controls; the `two_sided` positives never touch calibration, so the conflict result is measured,
+   not fitted.
+3. **The controls do double duty** — the `one_sided_a` / `one_sided_b` classes both place θ (and the
+   instability null) *and* are reported by category, exactly as v1a's `direct_recall` /
+   `uncontested_analytical` controls do. Their reported rates are mildly optimistic (θ is fitted to
+   separate them), but that biases the controls toward looking *quieter/cleaner*, which is
+   conservative for the `two_sided`-vs-`one_sided` claim, not inflating it.
 
 ## Calibration / thresholds
 
@@ -221,6 +228,8 @@ the persisted series and responses.
   principle; perturbation-instability is measured by deterministic content-divergence instead.
 - Behavioral-tension signals beyond instability + oscillation (e.g. hedging/confidence reuse) —
   a possible v2 corroboration, not this build.
+- The `two_sided`-only side-order-swap perturbation — deferred to v1b.1 (see signal 3); this build
+  ships the shared neutral-paraphrase family only.
 
 ## The run (held for explicit go)
 
@@ -228,8 +237,8 @@ One g5.xlarge run: regenerate refusal direction + calibration on-box, extract th
 narrative directions (report each `cos` — the go/no-go diagnostic), generate base + K perturbation
 responses for the validation classes with both directions hooked, score, and report. Greedy,
 reproducible, `--rescore` exact. **Cost driver:** each prompt generates 1 base + K≈3 paraphrase
-responses (two_sided prompts add ~2 side-order swaps); ~4 topics × ~40 prompts × ~4, plus swaps,
-≈ 800 generations at 256 tokens — well within a single-hour A10G run. The run is **held for the originator's explicit instruction** (like every
+responses; ~4 topics × ~40 prompts × ~4 ≈ 640 generations at 256 tokens — well within a single-hour
+A10G run. The run is **held for the originator's explicit instruction** (like every
 prior AWS run) and gated behind spec + plan review; the offline scripts, probe sets, tests, and the
 teed-up run script are built first.
 
