@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from esta.conflict import windowed_conflict_aggregates
-from esta.fidelity import convergence, nearest_rank_percentile  # noqa: F401 (Task 5)
+from esta.fidelity import convergence, nearest_rank_percentile
 from esta.oscillation import oscillation_rate
 from esta.scripts.analyze_performed_uncertainty import youden_cutoff
 
@@ -175,3 +175,139 @@ def _load_rescore(path: Path):
     provenance["rescored_from"] = str(path)
     provenance["rescored_at"] = datetime.now(UTC).isoformat()
     return records, list(prior.get("summary", {}).get("excluded", [])), provenance
+
+
+def _theta_from_controls(records):  # noqa: ANN001
+    """theta_a from one_sided_a (high on A) vs the rest (low); theta_b symmetric."""
+    a_high = [_peak(r["p_a_series"]) for r in records if r["category"] == CLASS_ONE_A]
+    a_low = [_peak(r["p_a_series"]) for r in records
+             if r["category"] in (CLASS_ONE_B, CLASS_NEUTRAL)]
+    b_high = [_peak(r["p_b_series"]) for r in records if r["category"] == CLASS_ONE_B]
+    b_low = [_peak(r["p_b_series"]) for r in records
+             if r["category"] in (CLASS_ONE_A, CLASS_NEUTRAL)]
+    if not (a_high and a_low and b_high and b_low):
+        raise SystemExit("theta needs one_sided_a, one_sided_b, and neutral control records.")
+    return derive_theta(a_high, a_low), derive_theta(b_high, b_low)
+
+
+def _instability_null(records):  # noqa: ANN001
+    """p95 of one-sided within-topic instability -- 'unstable' means beyond this."""
+    one_sided = [r["instability"] for r in records
+                 if r["category"] in (CLASS_ONE_A, CLASS_ONE_B) and r.get("instability") is not None]
+    return nearest_rank_percentile(one_sided, 95) if one_sided else None
+
+
+def _finish(records, excluded, provenance, window):  # noqa: ANN001
+    # instability first (independent of theta), so the null can be computed.
+    for r in records:
+        r["instability"] = mean_pairwise_divergence(r.get("perturbation_responses", []))
+    theta_a_cut, theta_b_cut = _theta_from_controls(records)
+    theta_a = theta_a_cut.cutoff if theta_a_cut is not None else None
+    theta_b = theta_b_cut.cutoff if theta_b_cut is not None else None
+    score_records(records, theta_a, theta_b, window)
+    return build_report(records, excluded, provenance, theta_a_cut, theta_b_cut,
+                        _instability_null(records), window)
+
+
+# Neutral paraphrase templates (shared perturbation family, all classes) and the
+# two-sided-only side-order swap are applied to prompt TEXT deterministically.
+def _paraphrases(text: str, k: int) -> list[str]:
+    stems = [
+        "Consider the following question. {t}",
+        "Please address this: {t}",
+        "Here is a question to work through. {t}",
+        "Respond to the following prompt. {t}",
+    ]
+    return [stems[i % len(stems)].format(t=text) for i in range(k)]
+
+
+def _generate_records(args):  # noqa: ANN001
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    from esta.inference.hooks import HookCapture
+    from esta.probes.refusal import load_refusal_direction, project_activations
+
+    prefix = args.direction_prefix
+    dir_a = prefix.with_name(f"{prefix.name}_{args.topic}_a.pt")
+    dir_b = prefix.with_name(f"{prefix.name}_{args.topic}_b.pt")
+    for path in (dir_a, dir_b):
+        if not path.exists():
+            raise SystemExit(f"narrative direction not found at {path}; extract it first.")
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    tokenizer = AutoTokenizer.from_pretrained(args.model)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model, torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
+        device_map=device)
+    model.train(False)
+    r_a = load_refusal_direction(dir_a, device="cpu")   # same loader: a (hidden,) tensor
+    r_b = load_refusal_direction(dir_b, device="cpu")
+
+    def _generate(text: str, hook_it: bool):
+        templated = tokenizer.apply_chat_template(
+            [{"role": "user", "content": text}], tokenize=False, add_generation_prompt=True)
+        inputs = tokenizer(templated, return_tensors="pt").to(device)
+        if hook_it:
+            with HookCapture() as hook:
+                hook.attach(model, args.refusal_layer)
+                with torch.no_grad():
+                    out = model.generate(**inputs, max_new_tokens=args.max_tokens,
+                                         do_sample=False, pad_token_id=tokenizer.pad_token_id)
+            text_out = tokenizer.decode(out[0, inputs.input_ids.shape[1]:],
+                                        skip_special_tokens=True).strip()
+            return text_out, hook.activations
+        with torch.no_grad():
+            out = model.generate(**inputs, max_new_tokens=args.max_tokens, do_sample=False,
+                                 pad_token_id=tokenizer.pad_token_id)
+        return tokenizer.decode(out[0, inputs.input_ids.shape[1]:], skip_special_tokens=True).strip(), None
+
+    records, excluded = [], []
+    for cls in ALL_CLASSES:
+        path = args.probe_dir / f"framing_{args.topic}.json" if cls != CLASS_NEUTRAL \
+            else args.probe_dir / "uncontested_analytical.json"
+        prompts = [p for p in json.loads(path.read_text(encoding="utf-8")).get("prompts", [])
+                   if cls == CLASS_NEUTRAL or p.get("class") == cls]
+        print(f"running {cls} ({len(prompts)} prompts) ...")
+        for prompt in prompts:
+            base, acts = _generate(prompt["text"], hook_it=True)
+            p_a = project_activations(acts, r_a)
+            p_b = project_activations(acts, r_b)
+            if not p_a:
+                excluded.append({"id": prompt["id"], "reason": "no tokens generated"})
+                continue
+            perts = [base] + [_generate(t, hook_it=False)[0]
+                              for t in _paraphrases(prompt["text"], args.paraphrases)]
+            records.append({
+                "id": prompt["id"], "category": cls, "topic": prompt.get("topic", args.topic),
+                "text": prompt["text"], "response": base,
+                "p_a_series": p_a, "p_b_series": p_b, "perturbation_responses": perts,
+            })
+    provenance = {
+        "timestamp": datetime.now(UTC).isoformat(), "model": args.model, "topic": args.topic,
+        "max_tokens": args.max_tokens, "refusal_layer": args.refusal_layer,
+        "paraphrases": args.paraphrases, "window": args.window,
+        "direction_a": str(dir_a), "direction_b": str(dir_b),
+    }
+    return records, excluded, provenance
+
+
+def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = parse_args()
+    if args.rescore is not None:
+        records, excluded, provenance = _load_rescore(args.rescore)
+        window = int(provenance.get("window", DEFAULT_WINDOW))
+    else:
+        records, excluded, provenance = _generate_records(args)
+        window = args.window
+    report = _finish(records, excluded, provenance, window)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print_report(report, args.output)
+
+
+if __name__ == "__main__":
+    main()

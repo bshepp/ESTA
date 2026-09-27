@@ -85,3 +85,49 @@ def test_build_report_records_the_window() -> None:
     report = build_report(records, excluded=[], provenance={"model": "m"},
                           theta_a_cut=None, theta_b_cut=None, instability_null=None, window=5)
     assert report["summary"]["window"] == 5
+
+
+def _prior(rid, category, p_a, p_b, perts, topic="israel-palestine"):
+    return {"id": rid, "category": category, "topic": topic, "text": "q", "response": "r",
+            "p_a_series": p_a, "p_b_series": p_b, "perturbation_responses": perts,
+            "coactivation_any": None, "coactivation_max": 999.0}  # stale, must be overwritten
+
+
+def _write_prior(path, records):
+    import json as _json
+    path.write_text(_json.dumps({"provenance": {"model": "test-model"},
+                                 "summary": {"excluded": []}, "records": records}), encoding="utf-8")
+
+
+def test_rescore_runs_without_torch(tmp_path) -> None:  # noqa: ANN001
+    import json as _json
+    import sys
+
+    from esta.scripts.analyze_framing_conflict import main, parse_args
+
+    records = (
+        [_prior(f"ts{i}", CLASS_TWO_SIDED, [2.0, 2.0], [2.0, 2.0], ["a b", "c d"]) for i in range(4)]
+        + [_prior(f"oa{i}", CLASS_ONE_A, [2.0, 2.0], [0.1, 0.1], ["a b", "a b"]) for i in range(6)]
+        + [_prior(f"ob{i}", CLASS_ONE_B, [0.1, 0.1], [2.0, 2.0], ["a b", "a b"]) for i in range(6)]
+        + [_prior(f"nu{i}", CLASS_NEUTRAL, [0.1, 0.1], [0.1, 0.1], ["a b", "a b"], "energy")
+           for i in range(6)]
+    )
+    prior = tmp_path / "prior.json"
+    _write_prior(prior, records)
+    out = tmp_path / "out.json"
+    main(parse_args(["--rescore", str(prior), "--output", str(out)]))
+    assert "torch" not in sys.modules
+    report = _json.loads(out.read_text(encoding="utf-8"))
+    by_id = {r["id"]: r for r in report["records"]}
+    assert by_id["ts0"]["coactivation_max"] != 999.0        # recomputed
+    assert report["summary"]["israel_palestine"]
+
+
+def test_rescore_refuses_corpus_missing_perturbations(tmp_path) -> None:  # noqa: ANN001
+    from esta.scripts.analyze_framing_conflict import main, parse_args
+    rec = _prior("ts0", CLASS_TWO_SIDED, [1.0], [1.0], ["a b", "c d"])
+    del rec["perturbation_responses"]
+    prior = tmp_path / "p.json"
+    _write_prior(prior, [rec])
+    with pytest.raises(SystemExit, match="perturbation_responses"):
+        main(parse_args(["--rescore", str(prior), "--output", str(tmp_path / "o.json")]))
