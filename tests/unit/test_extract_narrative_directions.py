@@ -9,11 +9,6 @@ from esta.conflict import cosine_similarity
 from esta.scripts.extract_narrative_directions import build_narrative_directions
 
 
-def _unit(v):
-    n = math.sqrt(sum(x * x for x in v))
-    return [x / n for x in v]
-
-
 def test_directions_are_unit_and_b_is_orthogonal_to_a() -> None:
     # A-mean points +x from neutral, B-mean points +y from neutral.
     a_acts = [[2.0, 0.0], [2.0, 0.0]]

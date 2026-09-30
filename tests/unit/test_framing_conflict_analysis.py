@@ -116,6 +116,80 @@ def test_build_report_records_the_window() -> None:
     assert report["summary"]["internal_vs_instability"] == {"coactivation_max": None, "oscillation": None}
 
 
+# --- _finish edge paths (final-review coverage) --------------------------------
+
+
+def _ctrl_set(p_a_by_class, p_b_by_class, perts_two_sided=("alpha beta", "gamma delta"),
+              perts_ctrl=("alpha beta", "alpha beta"), n_ts=4, n_ctrl=8):
+    """Four-class record set where each class's p_a/p_b series is given by value."""
+    recs = [_rec(f"ts{i}", CLASS_TWO_SIDED, p_a_by_class[CLASS_TWO_SIDED], p_b_by_class[CLASS_TWO_SIDED],
+                 list(perts_two_sided)) for i in range(n_ts)]
+    for cls, tag in ((CLASS_ONE_A, "oa"), (CLASS_ONE_B, "ob"), (CLASS_NEUTRAL, "nu")):
+        recs += [_rec(f"{tag}{i}", cls, p_a_by_class[cls], p_b_by_class[cls], list(perts_ctrl),
+                      topic="energy" if cls == CLASS_NEUTRAL else "israel-palestine")
+                 for i in range(n_ctrl)]
+    return recs
+
+
+def test_finish_theta_none_path_leaves_internal_signals_unscored_but_keeps_instability() -> None:
+    """When the one_sided controls do NOT separate, Youden returns None: co-activation and
+    oscillation must be None (not scored), the report shows theta None, and instability --
+    which is independent of theta -- must still be computed and still flag unstable prompts."""
+    from esta.scripts.analyze_framing_conflict import _finish
+
+    same = [1.0, 1.0]  # identical peaks in every class -> no separation on either axis
+    recs = _ctrl_set({c: same for c in (CLASS_TWO_SIDED, CLASS_ONE_A, CLASS_ONE_B, CLASS_NEUTRAL)},
+                     {c: same for c in (CLASS_TWO_SIDED, CLASS_ONE_A, CLASS_ONE_B, CLASS_NEUTRAL)})
+    report = _finish(recs, excluded=[], provenance={"model": "m"}, window=2)
+    s = report["summary"]
+    assert s["theta_a"] is None and s["theta_b"] is None
+    by_id = {r["id"]: r for r in report["records"]}
+    assert by_id["ts0"]["coactivation_any"] is None
+    assert by_id["ts0"]["coactivation_max"] is None
+    assert by_id["ts0"]["oscillation"] is None
+    # instability is theta-independent: two_sided perturbations diverge, controls don't
+    assert by_id["ts0"]["instability"] == pytest.approx(1.0)
+    assert by_id["oa0"]["instability"] == pytest.approx(0.0)
+    assert by_id["ts0"]["unstable"] is True
+    assert s["internal_vs_instability"]["coactivation_max"] is None  # nothing to associate
+
+
+def test_theta_from_controls_refuses_a_missing_control_class() -> None:
+    from esta.scripts.analyze_framing_conflict import _theta_from_controls
+
+    # one_sided_b is the "high" class for the B axis; without it theta_b has no positive class.
+    # (neutral alone is NOT required -- the other one-sided class already populates the low list.)
+    recs = [_rec("ts0", CLASS_TWO_SIDED, [2.0], [2.0], ["a", "b"]),
+            _rec("oa0", CLASS_ONE_A, [2.0], [0.1], ["a", "a"]),
+            _rec("nu0", CLASS_NEUTRAL, [0.1], [0.1], ["a", "a"], topic="energy")]  # no one_sided_b
+    with pytest.raises(SystemExit, match="one_sided_b"):
+        _theta_from_controls(recs)
+
+
+def test_finish_treats_a_nonpositive_theta_as_unscorable_instead_of_crashing() -> None:
+    """Projections can be negative, so Youden can place a NEGATIVE cutoff (the narrative's own
+    class peaks below zero but above the rest). Threshold ratios p/theta are meaningless for
+    theta <= 0 and windowed_conflict_aggregates raises on it. _finish must treat such a theta
+    as unscorable (None) -- a reported condition -- not crash the whole run."""
+    from esta.scripts.analyze_framing_conflict import _finish
+
+    # one_sided_a peaks at -0.5 vs everyone else at -2.0 -> separable, cutoff ~ -1.25 (< 0).
+    # Same shape on the B axis via one_sided_b.
+    p_a = {CLASS_TWO_SIDED: [-2.0, -2.0], CLASS_ONE_A: [-0.5, -0.5],
+           CLASS_ONE_B: [-2.0, -2.0], CLASS_NEUTRAL: [-2.0, -2.0]}
+    p_b = {CLASS_TWO_SIDED: [-2.0, -2.0], CLASS_ONE_A: [-2.0, -2.0],
+           CLASS_ONE_B: [-0.5, -0.5], CLASS_NEUTRAL: [-2.0, -2.0]}
+    recs = _ctrl_set(p_a, p_b)
+    report = _finish(recs, excluded=[], provenance={"model": "m"}, window=2)  # must not raise
+    s = report["summary"]
+    assert s["theta_a"] is not None and s["theta_a"]["cutoff"] < 0   # placed, but negative
+    by_id = {r["id"]: r for r in report["records"]}
+    assert by_id["ts0"]["coactivation_any"] is None                   # unscorable, not crashed
+    assert by_id["ts0"]["coactivation_max"] is None
+    assert by_id["ts0"]["oscillation"] is None
+    assert by_id["ts0"]["instability"] == pytest.approx(1.0)          # still computed
+
+
 def _prior(rid, category, p_a, p_b, perts, topic="israel-palestine"):
     return {"id": rid, "category": category, "topic": topic, "text": "q", "response": "r",
             "p_a_series": p_a, "p_b_series": p_b, "perturbation_responses": perts,

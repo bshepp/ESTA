@@ -239,14 +239,23 @@ def _instability_null(records):  # noqa: ANN001
     return nearest_rank_percentile(one_sided, 95) if one_sided else None
 
 
+def _scorable_theta(cut):  # noqa: ANN001
+    """The cutoff to score with, or None when the axis cannot be scored.
+
+    Projections can be negative, so Youden can place a cutoff <= 0 (the
+    narrative's own class peaks at or below zero, merely above the rest). A
+    threshold RATIO p/theta is meaningless there and windowed_conflict_aggregates
+    rejects it -- so treat it as unscorable, a reported condition (the report
+    still shows the placed cutoff and its sign), rather than crash the run.
+    """
+    return cut.cutoff if cut is not None and cut.cutoff > 0 else None
+
+
 def _finish(records, excluded, provenance, window):  # noqa: ANN001
-    # instability first (independent of theta), so the null can be computed.
-    for r in records:
-        r["instability"] = mean_pairwise_divergence(r.get("perturbation_responses", []))
     theta_a_cut, theta_b_cut = _theta_from_controls(records)
-    theta_a = theta_a_cut.cutoff if theta_a_cut is not None else None
-    theta_b = theta_b_cut.cutoff if theta_b_cut is not None else None
-    score_records(records, theta_a, theta_b, window)
+    # score_records computes instability for every record (it is theta-independent)
+    # before _instability_null reads it below, so no separate pre-pass is needed.
+    score_records(records, _scorable_theta(theta_a_cut), _scorable_theta(theta_b_cut), window)
     return build_report(records, excluded, provenance, theta_a_cut, theta_b_cut,
                         _instability_null(records), window)
 
