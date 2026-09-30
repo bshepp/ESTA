@@ -61,6 +61,29 @@ def build_narrative_directions(
     return [float(x) for x in unit_a], [float(x) for x in residual / b_norm], cos_before
 
 
+SEPARABILITY_COS = 0.9
+
+
+def separability_warning(cos_before: float) -> str | None:
+    """The go/no-go diagnostic, checked in BOTH signs; None when separable.
+
+    |cos| > SEPARABILITY_COS means the two narratives are nearly collinear and
+    the orthogonalized B residual is a small, noisy axis. The negative case is
+    the anticipated one (collinear-OPPOSITE, the engagement = -refusal trap).
+    The positive case is what the 7B Israel-Palestine check actually returned
+    (cos = +0.987): both narratives dominated by the SAME shared-topic component,
+    which the original negative-only check let through silently.
+    """
+    if cos_before > SEPARABILITY_COS:
+        return (f"Narratives point in nearly the same direction (cos={cos_before:.3f}): the "
+                "shared topic component dominates both; B's orthogonal residual is a small, "
+                "noisy axis. Project out the shared topic component before orthogonalizing.")
+    if cos_before < -SEPARABILITY_COS:
+        return (f"Narratives are strongly opposed (cos={cos_before:.3f}): near collinear-opposite; "
+                "co-activation may be undetectable on this model.")
+    return None
+
+
 # Smoke defaults for ONE topic (israel-palestine). Production supplies
 # --a-file/--b-file/--neutral-file per topic, HELD OUT from the validation and
 # calibration classes in data/probe_sets/. Register-matched: each is an
@@ -148,9 +171,9 @@ def main() -> None:
 
     r_a, r_b_perp, cos_before = build_narrative_directions(a_acts, b_acts, neutral_acts)
     log.info("topic=%s  cos(A, B) before orthogonalization: %.4f", args.topic, cos_before)
-    if cos_before < -0.9:
-        log.warning("Narratives are strongly opposed (cos=%.3f): near collinear-opposite; "
-                    "co-activation may be undetectable on this model.", cos_before)
+    warning = separability_warning(cos_before)
+    if warning:
+        log.warning(warning)
 
     if args.refusal_direction.exists():
         refusal = [float(x) for x in load_refusal_direction(args.refusal_direction, device="cpu")]

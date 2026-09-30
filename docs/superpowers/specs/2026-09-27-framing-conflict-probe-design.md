@@ -270,6 +270,66 @@ what shipped:
   through three balance-review rounds and the other three topics one; balance on contested topics is
   inherently subjective, so the originator's read is the intended final arbiter before extraction.
 
+## Measured outcome — the Israel-Palestine cheap check (Qwen 2.5 7B Instruct, 2026-09-30)
+
+One topic on a g5.xlarge, ~1.5 GPU-hours, before committing to the four-topic run. **A mechanism
+test, not a truth test:** the originator's standing caveat is that the topic's history is contested
+and its sources are not objective, so nothing here is a claim about the subject — only about how
+the *model* represents two curated framings of it. The pipeline ran end to end on 7B (42 records,
+0 excluded, all report fields populated), so the machinery is validated; the *signals* returned a
+**structured negative** with two clear design causes.
+
+| class | n | co-activation rate | mean co-act max | mean oscillation | mean instability | unstable rate |
+| --- | --- | --- | --- | --- | --- | --- |
+| `two_sided` (positive) | 8 | 0.12 | 0.66 | 0.09 | **0.686** | 0.12 |
+| `one_sided_a` (control) | 8 | 0.00 | 0.36 | 0.00 | 0.679 | 0.00 |
+| `one_sided_b` (control) | 8 | **0.75** | 1.13 | 0.20 | 0.654 | 0.00 |
+| `neutral` (control) | 18 | 0.00 | −0.26 | n/a | 0.633 | 0.00 |
+
+θ_A = 8.77 (AUC 0.84, p = 2.1e-3), θ_B = 1.48 (AUC 1.00, p = 1.3e-5), both placed and positive
+(gate 2 passed); instability null (p95 of one-sided) = 0.774.
+
+### 1. The two narrative directions are nearly the same direction — cos(A, B) = **+0.987**
+
+The go/no-go diagnostic failed, in the direction the design did not anticipate. The spec guarded
+against *collinear-opposite* narratives (cos → −1, the "engagement = −refusal" trap). Instead the
+two extracted directions are almost **identical**: subtracting a shared *neutral* baseline from
+each leaves the component they have in common — "this is the Israel-Palestine topic, argued
+analytically" — in both `r_A` and `r_B`, and that shared topic component dominates. After
+Gram-Schmidt, `r_B⊥` is a small residual (‖r_B⊥‖ ≈ √(1−0.987²) ≈ 0.16 of ‖r_B‖) — a weak, noisy
+axis. The extraction script's warning only fired for cos < −0.9, so this went unflagged at run
+time; it is now flagged in both signs.
+
+**What that means:** with this extraction, "narrative A" is effectively the *topic* direction and
+"narrative B" is whatever small part of the B prompts isn't the topic. The co-activation pattern
+confirms it — it fires on **`one_sided_b` 75%** of the time (those prompts light the shared/topic
+axis *and* the B residual), on `two_sided` only 12%, and on `one_sided_a` never. That is not
+conflict; it is the collinearity artifact. A reportable observation, with the extraction-method
+caveat attached: on this model, the two curated framings activate overwhelmingly the *same*
+internal direction, with only a small framing-specific residual.
+
+### 2. Perturbation-instability does not discriminate — but not because it floors
+
+Instability is **~0.63–0.69 for every class, including neutral** (all 42 records within
+0.465–0.789), so `two_sided` (0.686) vs one-sided (0.667) separates by +0.019 — nothing. The
+anticipated failure was a *floor* (paraphrases too weak to move greedy output); the actual failure
+is the opposite: the programmatic paraphrases move *every* response by roughly the same large
+amount. The signal measures generic rewording sensitivity, not "torn." With only one record above
+the null, the internal-vs-instability association is unpowered (n_unstable = 1; p = 0.31 / 0.84).
+
+### What this changes (v1b.1)
+
+- **Extraction: project out the shared topic component.** Build `r_topic = mean(A ∪ B) −
+  mean(neutral)`, remove its projection from each of `r_A`, `r_B`, *then* orthogonalize B against
+  A. That isolates the framing-specific directions from "the topic." Report cos(A, B) both before
+  and after; the diagnostic now warns for |cos| > 0.9 in either sign.
+- **Perturbation: authored, framing-shifting rewordings + side-order swap.** The
+  `"paraphrases"` override already exists; it needs content that changes *framing* while preserving
+  meaning, plus the deferred `two_sided`-only side-order swap — and instability should be reported
+  relative to a per-class baseline so uniform rewording variability cancels.
+- **Do not run the other three topics on the v1b design.** The cheap check did its job: the
+  four-topic run would have reproduced both artifacts three more times.
+
 ## Open questions
 
 None blocking. Decisions made during brainstorming (2026-09-27): per-topic narrative pairs (not a

@@ -6,7 +6,35 @@ import math
 import pytest
 
 from esta.conflict import cosine_similarity
-from esta.scripts.extract_narrative_directions import build_narrative_directions
+from esta.scripts.extract_narrative_directions import (
+    build_narrative_directions,
+    separability_warning,
+)
+
+# --- separability_warning ------------------------------------------------------
+# The go/no-go diagnostic must flag BOTH collinear failure modes. The 7B
+# Israel-Palestine check (2026-09-30) returned cos(A, B) = +0.987 -- the two
+# narratives were nearly the SAME direction (the shared topic component
+# dominated) -- and the original check, which only looked for the anticipated
+# collinear-OPPOSITE case (cos near -1), stayed silent.
+
+
+def test_positive_collinear_narratives_are_flagged() -> None:
+    msg = separability_warning(0.987)
+    assert msg is not None
+    assert "same direction" in msg or "shared" in msg
+
+
+def test_negative_collinear_narratives_are_flagged() -> None:
+    msg = separability_warning(-0.95)
+    assert msg is not None
+    assert "opposed" in msg or "opposite" in msg
+
+
+def test_separable_narratives_produce_no_warning() -> None:
+    assert separability_warning(0.34) is None   # the v1a reasoning/refusal cosine
+    assert separability_warning(-0.5) is None
+    assert separability_warning(0.0) is None
 
 
 def test_directions_are_unit_and_b_is_orthogonal_to_a() -> None:
