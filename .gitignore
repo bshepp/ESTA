@@ -53,3 +53,7 @@ audit_logs/
 
 # Notebooks
 .ipynb_checkpoints/
+
+# v1b framing-conflict run outputs (full responses + per-token series; never commit)
+data/framing_conflict_*.json
+data/narrative_direction_*.pt
