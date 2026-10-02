@@ -147,13 +147,17 @@ def fig_conflict_window_sweep(report: dict[str, Any]):
     plt = _plt()
     s = sweep_series(report.get("summary", {}))
     fig, ax = plt.subplots(figsize=(7, 3.6), layout="constrained")
+    # Numeric x positions labelled with the gaps: a categorical axis cannot place an "n/a"
+    # annotation at a gap no point has registered (constrained layout then collapses).
+    pos = {gap: i for i, gap in enumerate(s["gaps"])}
     for cls, vals in s.items():
         if cls == "gaps":
             continue
         xs_ok, ok, xs_na = split_na(s["gaps"], vals)
-        ax.plot(xs_ok, ok, marker="o", label=cls)
+        ax.plot([pos[x] for x in xs_ok], ok, marker="o", label=cls)
         for x in xs_na:
-            ax.text(x, 0.02, "n/a", ha="center", fontsize=7, color="#7a1f1f")
+            ax.text(pos[x], 0.02, "n/a", ha="center", fontsize=7, color="#7a1f1f")
+    ax.set_xticks(range(len(s["gaps"])), s["gaps"])
     ax.set_xlabel("gap (max tokens between the two crossings); inf = whole response")
     ax.set_ylabel("any-conflict rate")
     ax.set_ylim(-0.02, 1.02)
