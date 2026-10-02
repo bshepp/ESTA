@@ -34,7 +34,7 @@ dependencies = [
 # Research-report site builder (docs/site). Not needed by core, [dev], or CI;
 # `python -m esta.scripts.build_site --check` runs with none of these.
 site = [
-    "matplotlib>=3.8",
+    "matplotlib>=3.10",
     "markdown>=3.5",
 ]
 # Model-runtime deps. Install with `pip install -e .[model]` on a machine that

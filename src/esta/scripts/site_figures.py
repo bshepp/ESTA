@@ -58,8 +58,8 @@ def _na(values: list) -> list[float]:
 
 def _hbox(ax, data, labels):  # noqa: ANN001
     """Horizontal boxplot with tick labels set portably (boxplot(labels=) was renamed
-    tick_labels in matplotlib 3.9; set_yticks works on every supported version)."""
-    ax.boxplot(data, vert=False)
+    tick_labels in matplotlib 3.9; vert= deprecated in 3.11 -> orientation=)."""
+    ax.boxplot(data, orientation="horizontal")   # matplotlib >= 3.10
     ax.set_yticks(range(1, len(labels) + 1), labels)
 
 
@@ -172,7 +172,7 @@ def fig_framing_swap_flip(report: dict[str, Any]):
     ax.set_yticks(range(len(rows)), [r[0] for r in rows])
     ax.set_xlabel("mean lean on engaged tokens (half-gap units; +A / -B; +-1 = one-sided commitment)")
     ax.set_title("Framing v1b.1: lean under side-order swap, per two-sided prompt")
-    ax.legend(fontsize=8, loc="lower right")
+    ax.legend(fontsize=8, loc="upper left")
     fig.tight_layout()
     return fig
 
