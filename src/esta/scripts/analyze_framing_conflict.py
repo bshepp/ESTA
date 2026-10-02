@@ -17,7 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Sequence
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from itertools import combinations
 from pathlib import Path
@@ -27,7 +27,11 @@ from esta.conflict import windowed_conflict_aggregates
 from esta.fidelity import convergence, nearest_rank_percentile
 from esta.lean import lean_shift, lean_signals, swap_flip
 from esta.oscillation import oscillation_rate
-from esta.scripts.analyze_performed_uncertainty import mann_whitney_p, youden_cutoff
+from esta.scripts.analyze_performed_uncertainty import (
+    SIGNIFICANCE_ALPHA,
+    mann_whitney_p,
+    youden_cutoff,
+)
 
 CLASS_TWO_SIDED = "two_sided"
 CLASS_ONE_A = "one_sided_a"
@@ -389,23 +393,61 @@ def _peak_abs(series: Sequence[float]) -> float:
     return max((abs(x) for x in series), default=0.0)
 
 
-def _thetas_lean_from_controls(records):  # noqa: ANN001
-    """theta_topic: one_sided (engaged) vs neutral; theta_lean: one_sided |lean| (committed) vs neutral.
+@dataclass(frozen=True)
+class LeanScale:
+    """The lean axis calibrated from the one_sided controls (two_sided never used).
 
-    two_sided never touches calibration -- it is the positive class.
+    cutoff: half the A-B gap in raw lean units, so committed one-sided answers sit
+    at +-1 and 'balanced' means closer to the midpoint than the sides are.
+    offset: the midpoint of the two one-sided classes' engaged mean lean -- the
+    raw axis's zero (set by prompt activations) is NOT 'between the sides' at
+    generation time (7B IP check: A +4.77, B still +0.63), so lean is measured
+    relative to this control-derived midpoint. Travels with its separation
+    quality (AUC, one-sided Mann-Whitney p that A ranks above B).
     """
-    one_sided = [r for r in records if r["category"] in (CLASS_ONE_A, CLASS_ONE_B)]
+
+    cutoff: float
+    offset: float
+    gap: float
+    auc: float
+    p_value: float
+
+
+def _engaged_mean_lean(r, theta_topic):  # noqa: ANN001
+    vals = [lv for tv, lv in zip(r["p_topic_series"], r["p_lean_series"], strict=True) if tv >= theta_topic]
+    return sum(vals) / len(vals) if vals else None
+
+
+def _thetas_lean_from_controls(records):  # noqa: ANN001
+    """theta_topic: one_sided (engaged) vs neutral, Youden. Lean scale: from the two one_sided
+    classes on ENGAGED tokens -- midpoint (offset) and half-gap (cutoff), gated on A ranking
+    above B significantly. The lean is only meaningful while ON the topic: off-topic neutral
+    projects arbitrary noise onto the lean axis, so neutral never calibrates the lean.
+    Returns (theta_topic_cut, LeanScale | None, offset)."""
+    one_a = [r for r in records if r["category"] == CLASS_ONE_A]
+    one_b = [r for r in records if r["category"] == CLASS_ONE_B]
     neutral = [r for r in records if r["category"] == CLASS_NEUTRAL]
-    if not one_sided or not neutral:
-        raise SystemExit("lean thetas need one_sided_a/one_sided_b and neutral control records.")
-    t_cut = derive_theta([_peak(r["p_topic_series"]) for r in one_sided],
+    if not one_a or not one_b or not neutral:
+        raise SystemExit("lean thetas need one_sided_a, one_sided_b, and neutral control records.")
+    t_cut = derive_theta([_peak(r["p_topic_series"]) for r in one_a + one_b],
                          [_peak(r["p_topic_series"]) for r in neutral])
-    l_cut = derive_theta([_peak_abs(r["p_lean_series"]) for r in one_sided],
-                         [_peak_abs(r["p_lean_series"]) for r in neutral])
-    return t_cut, l_cut
+    if t_cut is None or t_cut.cutoff <= 0:
+        return t_cut, None, 0.0   # no engagement threshold -> the lean is undefined everywhere
+    a_means = [m for m in (_engaged_mean_lean(r, t_cut.cutoff) for r in one_a) if m is not None]
+    b_means = [m for m in (_engaged_mean_lean(r, t_cut.cutoff) for r in one_b) if m is not None]
+    if not a_means or not b_means:
+        return t_cut, None, 0.0
+    mean_a, mean_b = sum(a_means) / len(a_means), sum(b_means) / len(b_means)
+    offset = (mean_a + mean_b) / 2
+    gap = mean_a - mean_b
+    p_value = mann_whitney_p(b_means, a_means)
+    auc = sum(1 for a in a_means for b in b_means if a > b) / (len(a_means) * len(b_means))
+    if gap <= 0 or p_value >= SIGNIFICANCE_ALPHA:
+        return t_cut, None, offset   # sides do not separate on the lean axis: reported, not forced
+    return t_cut, LeanScale(cutoff=gap / 2, offset=offset, gap=gap, auc=auc, p_value=p_value), offset
 
 
-def score_records_lean(records, theta_topic, theta_lean) -> None:  # noqa: ANN001
+def score_records_lean(records, theta_topic, theta_lean, lean_offset: float = 0.0) -> None:  # noqa: ANN001
     """Add lean signals + the lean-flip ground truth to each record in place.
 
     Internal (base generation, engaged tokens): n_engaged, mean_lean, balance,
@@ -419,11 +461,14 @@ def score_records_lean(records, theta_topic, theta_lean) -> None:  # noqa: ANN00
             r.update({"n_engaged": None, "mean_lean": None, "balance": None, "oscillation": None,
                       "lean_shift": None, "swap_flip": None, "torn": None})
             continue
-        r.update(lean_signals(r["p_topic_series"], r["p_lean_series"], theta_topic, theta_lean))
+        def _centered(series):  # noqa: ANN001
+            return [x - lean_offset for x in series]
+
+        r.update(lean_signals(r["p_topic_series"], _centered(r["p_lean_series"]), theta_topic, theta_lean))
         swap: dict[str, float | None] = {}
         pert_means: list[float | None] = []
         for pert in r.get("perturbations", []):
-            sig = lean_signals(pert["p_topic_series"], pert["p_lean_series"], theta_topic, theta_lean)
+            sig = lean_signals(pert["p_topic_series"], _centered(pert["p_lean_series"]), theta_topic, theta_lean)
             pert["mean_lean"] = sig["mean_lean"]
             pert_means.append(sig["mean_lean"])
             if pert.get("kind") in ("swap_a_first", "swap_b_first"):
@@ -509,9 +554,9 @@ def print_report_lean(report: dict[str, Any], output: Path) -> None:
 
 
 def _finish_lean(records, excluded, provenance):  # noqa: ANN001
-    t_cut, l_cut = _thetas_lean_from_controls(records)
-    score_records_lean(records, _scorable_theta(t_cut), _scorable_theta(l_cut))
-    return build_report_lean(records, excluded, provenance, t_cut, l_cut)
+    t_cut, scale, offset = _thetas_lean_from_controls(records)
+    score_records_lean(records, _scorable_theta(t_cut), _scorable_theta(scale), lean_offset=offset)
+    return build_report_lean(records, excluded, provenance, t_cut, scale)
 
 
 def _perturbation_specs(prompt: dict, k: int) -> list[tuple[str, str]]:

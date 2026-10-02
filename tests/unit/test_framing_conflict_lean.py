@@ -121,3 +121,49 @@ def test_rescore_lean_refuses_a_corpus_missing_series(tmp_path) -> None:  # noqa
     _write_prior(prior, records)
     with pytest.raises(SystemExit, match="p_lean_series"):
         main(parse_args(["--rescore", str(prior), "--output", str(tmp_path / "o.json")]))
+
+
+def test_theta_lean_is_derived_from_engaged_tokens_only() -> None:
+    """The lean is only defined while the model is ON the topic. Off-topic neutral prompts
+    project arbitrary noise onto the lean axis, so a theta_lean built from |lean| over ALL
+    tokens cannot separate one_sided from neutral (the 7B IP lean check: theta_lean None).
+    Restrict the |lean| peak to engaged tokens (s_topic >= theta_topic): neutral then has no
+    engaged tokens (peak 0) and one_sided separates cleanly."""
+    from esta.scripts.analyze_framing_conflict import _thetas_lean_from_controls
+
+    # one_sided: engaged (topic 2.0) with committed lean 4.0
+    # neutral: NOT engaged (topic 0.1) but with LARGE spurious |lean| 9.0 over all tokens
+    recs = (
+        [_rec(f"oa{i}", CLASS_ONE_A, [2.0, 2.0], [4.0, 4.0]) for i in range(8)]
+        + [_rec(f"ob{i}", CLASS_ONE_B, [2.0, 2.0], [-4.0, -4.0]) for i in range(8)]
+        + [_rec(f"nu{i}", CLASS_NEUTRAL, [0.1, 0.1], [9.0, -9.0], topic="energy") for i in range(8)]
+    )
+    t_cut, l_cut, offset = _thetas_lean_from_controls(recs)
+    assert t_cut is not None and t_cut.cutoff > 0
+    assert l_cut is not None, "the one_sided classes separate on the engaged lean axis"
+    assert offset == pytest.approx(0.0)                 # +4 and -4 are symmetric about zero
+    assert l_cut.cutoff == pytest.approx(4.0)           # half the A-B gap: one_sided sits at +-1
+    assert l_cut.p_value < 0.05 and l_cut.auc == pytest.approx(1.0)
+
+
+def test_lean_midpoint_is_calibrated_from_the_one_sided_controls() -> None:
+    """On 7B the raw lean axis separated the sides by MAGNITUDE, not sign (engaged mean-lean
+    +4.77 for one_sided_a but still +0.63 for one_sided_b): the axis's zero, set by prompt
+    activations, is not 'between the sides' at generation time. Calibrate the midpoint from the
+    controls -- offset = mean of the two one-sided classes' engaged lean, two_sided never used --
+    so that A is positive and B negative by construction, and 'balanced' means near that midpoint."""
+    from esta.scripts.analyze_framing_conflict import _thetas_lean_from_controls
+
+    recs = (
+        [_rec(f"oa{i}", CLASS_ONE_A, [2.0, 2.0], [4.0, 4.0]) for i in range(8)]     # raw lean +4
+        + [_rec(f"ob{i}", CLASS_ONE_B, [2.0, 2.0], [1.0, 1.0]) for i in range(8)]   # raw lean +1 (!)
+        + [_rec(f"nu{i}", CLASS_NEUTRAL, [0.1, 0.1], [9.0, -9.0], topic="energy") for i in range(8)]
+    )
+    t_cut, l_cut, offset = _thetas_lean_from_controls(recs)
+    assert offset == pytest.approx(2.5)                       # midpoint of +4 and +1
+    assert l_cut is not None and l_cut.cutoff > 0
+    score_records_lean(recs, theta_topic=t_cut.cutoff, theta_lean=l_cut.cutoff, lean_offset=offset)
+    by_id = {r["id"]: r for r in recs}
+    assert by_id["oa0"]["mean_lean"] > 0                        # A-leaning after centering
+    assert by_id["ob0"]["mean_lean"] < 0                        # B-leaning after centering
+    assert by_id["oa0"]["mean_lean"] == pytest.approx(-by_id["ob0"]["mean_lean"])  # symmetric
