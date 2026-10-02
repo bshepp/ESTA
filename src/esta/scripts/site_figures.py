@@ -102,7 +102,7 @@ def fig_refusal_calibration(report: dict[str, Any]):
     recs = [dict(r, projection_max=_first_present(r, "projection_max", "refusal_projection_max"))
             for r in report.get("records", [])]
     by_cls = field_by_class(recs, "projection_max")
-    fig, ax = plt.subplots(figsize=(7, 3.6))
+    fig, ax = plt.subplots(figsize=(7, 3.6), layout="constrained")
     _hbox(ax, [v or [0.0] for v in by_cls.values()] or [[0.0]], list(by_cls) or ["n/a"])
     cal = report.get("_aux") or report.get("calibration") or report.get("provenance", {})
     drawn = False
@@ -114,7 +114,6 @@ def fig_refusal_calibration(report: dict[str, Any]):
     ax.set_title("Refusal probe: projections by class" + (" and calibrated bands" if drawn else ""))
     if drawn:
         ax.legend(fontsize=8)
-    fig.tight_layout()
     return fig
 
 
@@ -124,25 +123,23 @@ def fig_performed_uncertainty(report: dict[str, Any]):
     recs = [dict(r, answer_confidence=_first_present(r, "answer_confidence", "confidence"))
             for r in report.get("records", [])]
     classes = sorted({r.get("category", "?") for r in recs})
-    fig, axes = plt.subplots(1, 2, figsize=(8, 3.4))
+    fig, axes = plt.subplots(1, 2, figsize=(8, 3.4), layout="constrained")
     for ax, field, title in ((axes[0], "answer_confidence", "answer confidence"),
                              (axes[1], "hedge_score", "hedge score (v2)")):
         by_cls = field_by_class(recs, field)
         _hbox(ax, [by_cls.get(c) or [0.0] for c in classes], classes)
         ax.set_title(title)
     fig.suptitle("Performed uncertainty: per-class distributions")
-    fig.tight_layout()
     return fig
 
 
 def fig_response_fidelity(report: dict[str, Any]):
     plt = _plt()
     groups = distortion_by_class(report.get("records", []))
-    fig, ax = plt.subplots(figsize=(7, 3.4))
+    fig, ax = plt.subplots(figsize=(7, 3.4), layout="constrained")
     _hbox(ax, [v or [0.0] for v in groups.values()] or [[0.0]], list(groups) or ["n/a"])
     ax.set_xlabel("raw distortion (topic hit x operative evaded)")
     ax.set_title("Response fidelity: raw distortion by class")
-    fig.tight_layout()
     return fig
 
 
