@@ -36,7 +36,7 @@ docs/site/
     response-fidelity.md       raw vs anchored distortion, convergence caveat
     conflict-state.md          v1a structured negative -> v2 windowed sweep
     framing-conflict.md        v1b collinearity -> v1b.1 lean geometry, swap-flip
-    sources.md                 generated-in-place from docs/REFERENCES.md cite-keys + ESTA-original constructs
+    sources.md                 authored from docs/REFERENCES.md: each cite-key, its role, the ESTA-original constructs
     reproductions.md           exact commands per run; the AWS pattern; the DLAMI xet lesson
   style.css                    one shared stylesheet, no JS
   figures/*.png                generated from data/*.json (committed)
