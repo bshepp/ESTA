@@ -330,6 +330,49 @@ the null, the internal-vs-instability association is unpowered (n_unstable = 1; 
 - **Do not run the other three topics on the v1b design.** The cheap check did its job: the
   four-topic run would have reproduced both artifacts three more times.
 
+## v1b.1 — the lean geometry (designed and built 2026-10-01; run held)
+
+**Why the v1b fix I first proposed was wrong.** "Project out the shared topic component
+`m = (r_A + r_B)/2` before orthogonalizing" is a mathematical identity for failure: removing the
+mean direction from both leaves `r_A' + r_B' = 0`, i.e. `r_A' = -r_B'` exactly — cos → -1, the
+v1a "engagement = -refusal" trap, with co-activation impossible by construction. The real lesson of
+cos(A, B) = +0.987 is that **two classes against one baseline span only two directions**: what A
+and B *share* (the topic) and how they *differ* (the lean). v1b modelled the pair as two independent
+narrative axes; the geometry does not support that.
+
+**Decisions (brainstormed with the originator):**
+- **Primary model: topic axis + bipolar lean axis.** `topic = mean(A ∪ B) − neutral`;
+  `lean = (mean A − mean B)` orthogonalized against `topic`; +lean is A-leaning, −lean B-leaning.
+  Per token: engaged when `p_topic/θ_topic ≥ 1`; lean in `θ_lean` units. "Torn" over engaged tokens
+  = **balance** (fraction with |lean| < 1 — near the midpoint while on-topic) and **oscillation**
+  (committed sign flips; `esta.oscillation` reused unchanged over `(lean, −lean)`).
+- **Ground truth = the lean flips under logically-equivalent reframing.** Every generation (base +
+  perturbations) is hooked and its topic/lean series persisted. `swap_flip`: the lean's sign differs
+  between an authored *Israeli-first* and *Palestinian-first* ordering of the same two-sided ask;
+  `lean_shift`: the largest move of the mean lean under any perturbation, in θ units.
+  `torn = swap_flip or lean_shift ≥ 1`. The v1b text-divergence GT was ~0.65 for every class
+  including neutral — it measured generic rewording sensitivity; the lean GT asks the specific
+  question.
+- **On-topic baseline experiment alongside (data-only).** The v1b two-axis extraction is re-run
+  against an ON-TOPIC descriptive neutral baseline ("describe the positions without endorsing");
+  the now two-signed cos diagnostic answers empirically whether independent *advocacy* axes exist
+  beyond the topic. Reported, not relied on.
+- **Thresholds from controls only:** `θ_topic` = Youden(one_sided vs neutral on peak topic
+  projection); `θ_lean` = Youden(one_sided |lean| vs neutral). `two_sided` never touches calibration.
+
+**What shipped:** `build_topic_and_lean` (+ `_topic.pt`/`_lean.pt` from the extraction CLI);
+`esta.lean` (`lean_signals`, `lean_shift`, `swap_flip`, torch-free); `analyze_framing_conflict
+--geometry lean` (default; `narratives` keeps v1b and old reports rescore unchanged), with
+`score_records_lean`, `build_report_lean` (per-class `torn_rate`, `internal_vs_torn` association),
+geometry-aware `--rescore`; authored Israel-Palestine perturbations (8 swap pairs, 48 paraphrases,
+A/B paraphrases from the same two templates so parity holds by construction) and the on-topic
+neutral file. 354 tests, torch-free core intact.
+
+**Run (held):** Israel-Palestine only, 7B, as a cheap check again — after the originator's read of
+the authored swap/paraphrase text. Success looks like `two_sided` above `one_sided` on balance,
+oscillation, and `torn_rate`, with `neutral` not engaged and the controls separating cleanly; the
+on-topic cos is reported either way. Still a mechanism test, not a truth test.
+
 ## Open questions
 
 None blocking. Decisions made during brainstorming (2026-09-27): per-topic narrative pairs (not a
