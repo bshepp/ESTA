@@ -150,7 +150,8 @@ def test_build_all_figures_picks_first_existing_candidate_and_loads_aux(tmp_path
 
     from esta.scripts import site_figures as sf
 
-    data = tmp_path / "data"; data.mkdir()
+    data = tmp_path / "data"
+    data.mkdir()
     (data / "dual_use_analysis.json").write_text(json.dumps(
         {"records": [{"category": "pair", "projection_max": 20.0}]}), encoding="utf-8")
     (data / "calibration.json").write_text(json.dumps({"pressure_low": 1.0, "pressure_moderate": 2.0}), encoding="utf-8")

@@ -172,7 +172,7 @@ def fig_framing_v1b_classes(report: dict[str, Any]):
     co = class_means(summary, "coactivation_rate")
     inst = class_means(summary, "mean_instability")
     labels = [c for c, _ in co]
-    fig, ax = plt.subplots(figsize=(7, 3.4))
+    fig, ax = plt.subplots(figsize=(7, 3.4), layout="constrained")
     for offset, series, label in ((-0.2, co, "co-activation rate"), (0.2, inst, "mean instability")):
         xs = [i + offset for i, (_, v) in enumerate(series) if v is not None]
         ys = [float(v) for _, v in series if v is not None]
@@ -184,7 +184,6 @@ def fig_framing_v1b_classes(report: dict[str, Any]):
     ax.set_ylim(0, 1.05)
     ax.set_title("Framing v1b (two-axis): the collinearity artefact, cos(A,B)=0.987")
     ax.legend(fontsize=8)
-    fig.tight_layout()
     return fig
 
 

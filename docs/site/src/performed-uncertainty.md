@@ -79,7 +79,7 @@ checked against their keys and are genuine model errors, not curation defects.
 
 ## What it changes
 
-- The hedge instrument v2 is the one used by every later detector that needs a hedge measure.
+- The hedge instrument v2 is the project's hedge measure going forward (no later detector has needed one yet).
 - Rank thresholds became the shared `youden_cutoff` machinery the conflict and framing probes reuse.
 - Nothing is served: on this model the positive set returned a measured negative, so there is no
   performed-uncertainty signal to serve; the instrument stays available for other models and corpora.
