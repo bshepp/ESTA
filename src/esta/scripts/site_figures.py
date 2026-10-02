@@ -149,7 +149,7 @@ def fig_response_fidelity(report: dict[str, Any]):
 def fig_conflict_window_sweep(report: dict[str, Any]):
     plt = _plt()
     s = sweep_series(report.get("summary", {}))
-    fig, ax = plt.subplots(figsize=(7, 3.6))
+    fig, ax = plt.subplots(figsize=(7, 3.6), layout="constrained")
     for cls, vals in s.items():
         if cls == "gaps":
             continue
@@ -162,7 +162,6 @@ def fig_conflict_window_sweep(report: dict[str, Any]):
     ax.set_ylim(-0.02, 1.02)
     ax.set_title("Conflict v2: windowed conjunction sweep (Qwen 2.5 7B)")
     ax.legend(fontsize=8)
-    fig.tight_layout()
     return fig
 
 
