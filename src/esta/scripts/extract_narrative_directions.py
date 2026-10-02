@@ -61,6 +61,50 @@ def build_narrative_directions(
     return [float(x) for x in unit_a], [float(x) for x in residual / b_norm], cos_before
 
 
+def build_topic_and_lean(
+    a_acts: Sequence[Sequence[float]],
+    b_acts: Sequence[Sequence[float]],
+    neutral_acts: Sequence[Sequence[float]],
+) -> tuple[list[float], list[float], float]:
+    """Shared TOPIC direction and bipolar framing-LEAN direction (v1b.1).
+
+    Two classes against one baseline span only two directions: what A and B
+    share (the topic) and how they differ (the lean). v1b's cos(A, B) = +0.987
+    on Qwen 2.5 7B showed the shared direction dominating, so modelling the pair
+    as two independent narrative axes was the wrong geometry. Here:
+
+        topic = mean(A u B) - mean(neutral)          (pooled, then unit-normalized)
+        lean  = (mean(A) - mean(B)) orthogonalized against topic, unit-normalized
+
+    Sign convention: a projection onto `lean` is POSITIVE when A-leaning and
+    NEGATIVE when B-leaning. Returns (unit_topic, unit_lean, cos_A_B_before) --
+    the last is the raw collinearity of the v1b-style r_A, r_B, kept as the
+    diagnostic. Raises ValueError if the topic is ~zero or if A and B have no
+    contrast (lean ~zero: the two framings are indistinguishable here).
+    """
+    import numpy as np
+
+    neutral_mean = np.asarray(neutral_acts, dtype=np.float64).mean(axis=0)
+    a = np.asarray(a_acts, dtype=np.float64)
+    b = np.asarray(b_acts, dtype=np.float64)
+    r_a = a.mean(axis=0) - neutral_mean
+    r_b = b.mean(axis=0) - neutral_mean
+    cos_before = cosine_similarity(r_a.tolist(), r_b.tolist())
+    topic = np.vstack([a, b]).mean(axis=0) - neutral_mean
+    t_norm = float(np.linalg.norm(topic))
+    if t_norm < 1e-8:
+        raise ValueError("topic direction is ~zero; check the contrast prompts")
+    contrast = a.mean(axis=0) - b.mean(axis=0)
+    lean = np.asarray(orthogonalize(contrast.tolist(), topic.tolist()), dtype=np.float64)
+    l_norm = float(np.linalg.norm(lean))
+    if l_norm < 1e-8:
+        raise ValueError(
+            "narratives A and B have no contrast beyond the topic (lean is ~zero): the two "
+            "framings are indistinguishable on this model -- report this rather than proceeding."
+        )
+    return [float(x) for x in topic / t_norm], [float(x) for x in lean / l_norm], cos_before
+
+
 SEPARABILITY_COS = 0.9
 
 
@@ -186,6 +230,15 @@ def main() -> None:
     torch.save(torch.tensor(r_a, dtype=torch.float32), out_a)
     torch.save(torch.tensor(r_b_perp, dtype=torch.float32), out_b)
     log.info("Saved narrative directions to %s and %s", out_a, out_b)
+
+    # v1b.1 lean geometry: the shared topic axis + the bipolar framing-lean axis.
+    topic, lean, _ = build_topic_and_lean(a_acts, b_acts, neutral_acts)
+    log.info("topic=%s  cos(topic, lean)=%.4f (expect ~0)", args.topic, cosine_similarity(topic, lean))
+    out_t = args.output_prefix.with_name(f"{args.output_prefix.name}_{args.topic}_topic.pt")
+    out_l = args.output_prefix.with_name(f"{args.output_prefix.name}_{args.topic}_lean.pt")
+    torch.save(torch.tensor(topic, dtype=torch.float32), out_t)
+    torch.save(torch.tensor(lean, dtype=torch.float32), out_l)
+    log.info("Saved topic/lean directions to %s and %s", out_t, out_l)
 
 
 if __name__ == "__main__":

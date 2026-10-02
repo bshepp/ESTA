@@ -8,6 +8,7 @@ import pytest
 from esta.conflict import cosine_similarity
 from esta.scripts.extract_narrative_directions import (
     build_narrative_directions,
+    build_topic_and_lean,
     separability_warning,
 )
 
@@ -66,3 +67,38 @@ def test_collinear_opposite_narratives_raise() -> None:
     neutral = [[0.0, 0.0]]
     with pytest.raises(ValueError, match="collinear|separable"):
         build_narrative_directions(a_acts, b_acts, neutral)
+
+
+# --- build_topic_and_lean (v1b.1) --------------------------------------------
+# With two classes against one baseline there are only two directions: a SHARED
+# one (the topic) and a CONTRAST one (the lean). v1b's cos(A, B) = +0.987 showed
+# the shared direction dominating; the lean model represents that geometry
+# honestly instead of pretending there are two independent narrative axes.
+def test_topic_is_shared_mean_and_lean_is_orthogonal_contrast() -> None:
+    # A and B share a big common component (+x) and differ along y.
+    a_acts = [[4.0, 1.0], [4.0, 1.0]]
+    b_acts = [[4.0, -1.0], [4.0, -1.0]]
+    neutral = [[0.0, 0.0]]
+    topic, lean, cos_before = build_topic_and_lean(a_acts, b_acts, neutral)
+    assert topic == pytest.approx([1.0, 0.0])          # mean(A u B) - neutral = (4, 0), normalized
+    assert lean == pytest.approx([0.0, 1.0])           # (A - B) = (0, 2) -> +y is A-leaning
+    assert cosine_similarity(topic, lean) == pytest.approx(0.0, abs=1e-9)
+    assert math.isclose(math.sqrt(sum(x * x for x in lean)), 1.0, abs_tol=1e-9)
+    assert cos_before == pytest.approx(15 / 17)        # raw collinearity of r_A=(4,1), r_B=(4,-1)
+
+
+def test_lean_sign_convention_is_positive_toward_a() -> None:
+    a_acts = [[1.0, 3.0]]
+    b_acts = [[1.0, 1.0]]
+    neutral = [[0.0, 0.0]]
+    _, lean, _ = build_topic_and_lean(a_acts, b_acts, neutral)
+    # projecting a pure A activation onto lean must be positive
+    assert sum(x * y for x, y in zip(a_acts[0], lean, strict=True)) > 0
+
+
+def test_identical_narratives_have_no_lean() -> None:
+    a_acts = [[2.0, 2.0]]
+    b_acts = [[2.0, 2.0]]
+    neutral = [[0.0, 0.0]]
+    with pytest.raises(ValueError, match="no contrast|lean"):
+        build_topic_and_lean(a_acts, b_acts, neutral)
