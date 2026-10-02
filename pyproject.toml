@@ -31,6 +31,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Research-report site builder (docs/site). Not needed by core, [dev], or CI;
+# `python -m esta.scripts.build_site --check` runs with none of these.
+site = [
+    "matplotlib>=3.8",
+    "markdown>=3.5",
+]
 # Model-runtime deps. Install with `pip install -e .[model]` on a machine that
 # will actually load weights (the dev box's 8GB GPU for smoke tests, or AWS).
 model = [
