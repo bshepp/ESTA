@@ -109,7 +109,7 @@ is within one one-sided commitment of the calibrated midpoint. Six of eight flip
 
 ## Source
 
-`docs/superpowers/specs/2026-09-27-framing-conflict-probe-design.md` (the cheap check, the v1b.1
-addendum, and its measured outcome). Persisted reports (local, gitignored):
+[2026-09-27 framing-conflict design](../superpowers/specs/2026-09-27-framing-conflict-probe-design.md) (the
+cheap check, the v1b.1 addendum, and its measured outcome). Persisted reports (local, gitignored):
 `data/framing_conflict_israel-palestine.json` (v1b), `data/framing_lean_israel-palestine.json` and
 `data/framing_lean_israel-palestine_rescore2.json` (v1b.1, centered and scaled).

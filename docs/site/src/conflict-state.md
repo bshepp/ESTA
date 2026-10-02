@@ -83,6 +83,6 @@ the persisted v2 rescore. Three classes sit on the zero line at every gap.*
 
 ## Source
 
-`docs/superpowers/specs/2026-08-18-conflict-state-probe-design.md` (measured outcome and the v2
-section). Persisted reports (local, gitignored): `data/conflict_state_analysis.json` (v1a) and
+[2026-08-18 conflict-state design](../superpowers/specs/2026-08-18-conflict-state-probe-design.md) (measured
+outcome and the v2 section). Persisted reports (local, gitignored): `data/conflict_state_analysis.json` (v1a) and
 `data/conflict_state_analysis_v2.json` (the free windowed rescore).

@@ -31,7 +31,7 @@ x *(inference)* y
 ## What it changes
 z
 ## Source
-[design doc](../superpowers/specs/2026-08-18-conflict-state-probe-design.md)
+[design doc](specs/design.md)
 """
 
 
@@ -62,6 +62,8 @@ def test_referenced_figures_and_links_are_extracted() -> None:
 def _site(tmp_path: Path, pages: dict[str, str], figures: list[str]) -> Path:
     (tmp_path / "src").mkdir()
     (tmp_path / "figures").mkdir()
+    (tmp_path / "specs").mkdir()
+    (tmp_path / "specs" / "design.md").write_text("spec", encoding="utf-8")   # GOOD's Source link target
     for name, text in pages.items():
         (tmp_path / "src" / f"{name}.md").write_text(text, encoding="utf-8")
     for f in figures:
@@ -106,3 +108,40 @@ def test_committed_site_sources_pass_check() -> None:
     from esta.scripts.build_site import SITE, check
 
     assert check(SITE) == []
+
+
+# --- final-review fixes: cwd-independent, non-vacuous --check; relative-link validation ------
+
+
+def test_site_path_is_anchored_to_the_repo_not_the_cwd(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+    from esta.scripts.build_site import SITE, page_names
+
+    monkeypatch.chdir(tmp_path)
+    assert SITE.is_absolute() and (SITE / "src").is_dir()
+    assert page_names(SITE / "src")                      # the committed pages are found from anywhere
+
+
+def test_check_refuses_a_site_with_no_pages(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "figures").mkdir()
+    problems = check(tmp_path)
+    assert problems and "no source pages" in problems[0]
+
+
+def test_check_validates_relative_links_to_files(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "figures").mkdir()
+    (tmp_path / "specs").mkdir()
+    (tmp_path / "specs" / "real.md").write_text("x", encoding="utf-8")
+    (tmp_path / "src" / "index.md").write_text(
+        "# i\n[ok](specs/real.md) [bad](specs/ghost.md) [ext](https://x.y/a.md)\n", encoding="utf-8")
+    problems = check(tmp_path)
+    assert any("ghost.md" in p for p in problems) and not any("real.md" in p for p in problems)
+    assert not any("x.y" in p for p in problems)
+
+
+def test_angle_bracket_link_destinations_with_parens_and_spaces() -> None:
+    """Markdown allows `[t](<path with (parens).md>)`; a target like `epistemic-transparency-agent (1).md`
+    must be extracted whole, not cut at the first `)`."""
+    md = "[spec](<../epistemic-transparency-agent (1).md>) and [p](conflict-state.html)"
+    assert internal_links(md) == {"../epistemic-transparency-agent (1).md", "conflict-state.html"}

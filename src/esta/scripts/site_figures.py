@@ -3,7 +3,12 @@
 Shaping helpers are pure (report dict -> lists) and unit-tested without
 matplotlib; the fig_* wrappers import matplotlib lazily. A report that is not
 present locally (data/ is gitignored) is skipped with a notice -- the committed
-PNG stands -- never an error.
+PNG stands -- never an error. Each figure declares candidate report filenames
+(the CLAUDE.md command outputs and the local run names) and, optionally, an
+auxiliary file (the calibration JSON for the band boundaries).
+
+Undefined values (None -- the theta=None paths are real data) are never
+plotted as zeros: they are left out and annotated "n/a".
 """
 
 from __future__ import annotations
@@ -39,18 +44,26 @@ def swap_rows(records: list[dict[str, Any]]) -> list[tuple[str, float | None, fl
     return rows
 
 
-def distortion_by_class(records: list[dict[str, Any]]) -> dict[str, list[float]]:
+def field_by_class(records: list[dict[str, Any]], key: str) -> dict[str, list[float]]:
+    """Per-class list of a record field, in first-seen class order; None values are left out."""
     out: dict[str, list[float]] = {}
     for r in records:
         out.setdefault(r["category"], [])
-        if r.get("raw_distortion") is not None:
-            out[r["category"]].append(float(r["raw_distortion"]))
+        if r.get(key) is not None:
+            out[r["category"]].append(float(r[key]))
     return out
 
 
-def _na(values: list) -> list[float]:
-    """None -> 0.0 for plotting; the caption carries the truth (the None paths are real data)."""
-    return [0.0 if v is None else float(v) for v in values]
+def distortion_by_class(records: list[dict[str, Any]]) -> dict[str, list[float]]:
+    return field_by_class(records, "raw_distortion")
+
+
+def split_na(xs: list, vals: list) -> tuple[list, list[float], list]:
+    """(xs with values, those values, xs whose value is None) -- None is annotated, never plotted."""
+    xs_ok = [x for x, v in zip(xs, vals, strict=True) if v is not None]
+    ok = [float(v) for v in vals if v is not None]
+    xs_na = [x for x, v in zip(xs, vals, strict=True) if v is None]
+    return xs_ok, ok, xs_na
 
 
 # --- matplotlib wrappers (lazy import) --------------------------------------
@@ -72,38 +85,50 @@ def _plt():
     return plt
 
 
+def _first_present(record: dict[str, Any], *keys: str):
+    for k in keys:
+        if record.get(k) is not None:
+            return record[k]
+    return None
+
+
 def fig_refusal_calibration(report: dict[str, Any]):
-    """Projection distributions by class with the calibrated band boundaries (dual-use report)."""
+    """Projection distributions by class (dual-use audit) with the calibrated band boundaries.
+
+    Records carry `projection_max`; the band edges come from the calibration JSON, loaded
+    by build_all_figures into report["_aux"] (falling back to any embedded calibration).
+    """
     plt = _plt()
-    by_cls: dict[str, list[float]] = {}
-    for r in report.get("records", []):
-        v = r.get("refusal_projection_max")
-        if v is not None:
-            by_cls.setdefault(r.get("category", "?"), []).append(float(v))
+    recs = [dict(r, projection_max=_first_present(r, "projection_max", "refusal_projection_max"))
+            for r in report.get("records", [])]
+    by_cls = field_by_class(recs, "projection_max")
     fig, ax = plt.subplots(figsize=(7, 3.6))
-    _hbox(ax, list(by_cls.values()) or [[0.0]], list(by_cls.keys()) or ["n/a"])
-    cal = report.get("calibration") or report.get("provenance", {})
+    _hbox(ax, [v or [0.0] for v in by_cls.values()] or [[0.0]], list(by_cls) or ["n/a"])
+    cal = report.get("_aux") or report.get("calibration") or report.get("provenance", {})
+    drawn = False
     for key, label in (("pressure_low", "low | moderate"), ("pressure_moderate", "moderate | high")):
         if cal.get(key) is not None:
-            ax.axvline(float(cal[key]), ls="--", lw=1, label=label)
+            ax.axvline(float(cal[key]), ls="--", lw=1, label=f"{label} ({float(cal[key]):.2f})")
+            drawn = True
     ax.set_xlabel("max refusal-direction projection (layer 14)")
-    ax.set_title("Refusal probe: projections by class and calibrated bands")
-    if cal.get("pressure_low") is not None:
+    ax.set_title("Refusal probe: projections by class" + (" and calibrated bands" if drawn else ""))
+    if drawn:
         ax.legend(fontsize=8)
     fig.tight_layout()
     return fig
 
 
 def fig_performed_uncertainty(report: dict[str, Any]):
+    """Records carry `answer_confidence` (the constrained-answer confidence) and `hedge_score`."""
     plt = _plt()
-    recs = report.get("records", [])
+    recs = [dict(r, answer_confidence=_first_present(r, "answer_confidence", "confidence"))
+            for r in report.get("records", [])]
     classes = sorted({r.get("category", "?") for r in recs})
     fig, axes = plt.subplots(1, 2, figsize=(8, 3.4))
-    for ax, field, title in ((axes[0], "confidence", "token confidence"),
+    for ax, field, title in ((axes[0], "answer_confidence", "answer confidence"),
                              (axes[1], "hedge_score", "hedge score (v2)")):
-        data = [[float(r[field]) for r in recs if r.get("category") == c and r.get(field) is not None]
-                for c in classes]
-        _hbox(ax, [d or [0.0] for d in data], classes)
+        by_cls = field_by_class(recs, field)
+        _hbox(ax, [by_cls.get(c) or [0.0] for c in classes], classes)
         ax.set_title(title)
     fig.suptitle("Performed uncertainty: per-class distributions")
     fig.tight_layout()
@@ -128,7 +153,10 @@ def fig_conflict_window_sweep(report: dict[str, Any]):
     for cls, vals in s.items():
         if cls == "gaps":
             continue
-        ax.plot(s["gaps"], _na(vals), marker="o", label=cls)
+        xs_ok, ok, xs_na = split_na(s["gaps"], vals)
+        ax.plot(xs_ok, ok, marker="o", label=cls)
+        for x in xs_na:
+            ax.text(x, 0.02, "n/a", ha="center", fontsize=7, color="#7a1f1f")
     ax.set_xlabel("gap (max tokens between the two crossings); inf = whole response")
     ax.set_ylabel("any-conflict rate")
     ax.set_ylim(-0.02, 1.02)
@@ -145,10 +173,14 @@ def fig_framing_v1b_classes(report: dict[str, Any]):
     inst = class_means(summary, "mean_instability")
     labels = [c for c, _ in co]
     fig, ax = plt.subplots(figsize=(7, 3.4))
-    x = range(len(labels))
-    ax.bar([i - 0.2 for i in x], _na([v for _, v in co]), width=0.4, label="co-activation rate")
-    ax.bar([i + 0.2 for i in x], _na([v for _, v in inst]), width=0.4, label="mean instability")
-    ax.set_xticks(list(x), labels)
+    for offset, series, label in ((-0.2, co, "co-activation rate"), (0.2, inst, "mean instability")):
+        xs = [i + offset for i, (_, v) in enumerate(series) if v is not None]
+        ys = [float(v) for _, v in series if v is not None]
+        ax.bar(xs, ys, width=0.4, label=label)
+        for i, (_, v) in enumerate(series):
+            if v is None:
+                ax.text(i + offset, 0.02, "n/a", ha="center", fontsize=7, color="#7a1f1f")
+    ax.set_xticks(range(len(labels)), labels)
     ax.set_ylim(0, 1.05)
     ax.set_title("Framing v1b (two-axis): the collinearity artefact, cos(A,B)=0.987")
     ax.legend(fontsize=8)
@@ -159,45 +191,69 @@ def fig_framing_v1b_classes(report: dict[str, Any]):
 def fig_framing_swap_flip(report: dict[str, Any]):
     plt = _plt()
     rows = swap_rows(report.get("records", []))
-    fig, ax = plt.subplots(figsize=(7, 3.8))
+    fig, ax = plt.subplots(figsize=(7, 3.8), layout="constrained")
     for i, (_pid, a_first, b_first, flip) in enumerate(rows):
-        ya, yb = (0.0 if a_first is None else a_first), (0.0 if b_first is None else b_first)
-        ax.plot([ya, yb], [i, i], color="#999", lw=1)
-        ax.scatter([ya], [i], marker=">", color="#1f4e79", label="Israeli-first" if i == 0 else None)
-        ax.scatter([yb], [i], marker="<", color="#7a1f1f", label="Palestinian-first" if i == 0 else None)
+        if a_first is not None and b_first is not None:
+            ax.plot([a_first, b_first], [i, i], color="#999", lw=1)
+        if a_first is not None:
+            ax.scatter([a_first], [i], marker=">", color="#1f4e79", label="Israeli-first" if i == 0 else None)
+        else:
+            ax.text(0.02, i, "n/a (A-first)", va="center", fontsize=7, color="#7a1f1f")
+        if b_first is not None:
+            ax.scatter([b_first], [i], marker="<", color="#7a1f1f", label="Palestinian-first" if i == 0 else None)
+        else:
+            ax.text(0.02, i, "n/a (B-first)", va="center", fontsize=7, color="#7a1f1f")
         if flip:
-            ax.text(max(ya, yb) + 0.08, i, "flip", va="center", fontsize=8)
+            ax.text(max(v for v in (a_first, b_first) if v is not None) + 0.08, i, "flip", va="center", fontsize=8)
     ax.axvline(0, color="k", lw=0.8)
     ax.axvspan(-1, 1, color="#eee", zorder=0)
     ax.set_yticks(range(len(rows)), [r[0] for r in rows])
     ax.set_xlabel("mean lean on engaged tokens (half-gap units; +A / -B; +-1 = one-sided commitment)")
     ax.set_title("Framing v1b.1: lean under side-order swap, per two-sided prompt")
     ax.legend(fontsize=8, loc="upper left")
-    fig.tight_layout()
     return fig
 
 
-FIGURES: dict[str, tuple[str, Callable[[dict[str, Any]], Any]]] = {
-    "refusal_calibration.png": ("dual_use_analysis_qwen7b.json", fig_refusal_calibration),
-    "performed_uncertainty.png": ("performed_uncertainty_analysis.json", fig_performed_uncertainty),
-    "response_fidelity.png": ("response_fidelity_analysis.json", fig_response_fidelity),
-    "conflict_window_sweep.png": ("conflict_state_analysis_v2.json", fig_conflict_window_sweep),
-    "framing_v1b_classes.png": ("framing_conflict_israel-palestine.json", fig_framing_v1b_classes),
-    "framing_swap_flip.png": ("framing_lean_israel-palestine_rescore2.json", fig_framing_swap_flip),
+# png -> {"report": candidate filenames (first present wins), "aux": optional candidates
+#         loaded into report["_aux"], "fn": figure function}
+FIGURES: dict[str, dict[str, Any]] = {
+    "refusal_calibration.png": {
+        "report": ["dual_use_analysis_qwen7b.json", "dual_use_analysis.json"],
+        "aux": ["calibration_qwen7b.json", "calibration.json"],
+        "fn": fig_refusal_calibration},
+    "performed_uncertainty.png": {"report": ["performed_uncertainty_analysis.json"], "fn": fig_performed_uncertainty},
+    "response_fidelity.png": {"report": ["response_fidelity_analysis.json"], "fn": fig_response_fidelity},
+    "conflict_window_sweep.png": {"report": ["conflict_state_analysis_v2.json"], "fn": fig_conflict_window_sweep},
+    "framing_v1b_classes.png": {"report": ["framing_conflict_israel-palestine.json"], "fn": fig_framing_v1b_classes},
+    "framing_swap_flip.png": {
+        "report": ["framing_lean_israel-palestine_rescore2.json", "framing_lean_israel-palestine_rescore.json",
+                   "framing_lean_israel-palestine.json"],
+        "fn": fig_framing_swap_flip},
 }
+
+
+def _first_existing(data_dir: Path, names: list[str]) -> Path | None:
+    for n in names:
+        if (data_dir / n).exists():
+            return data_dir / n
+    return None
 
 
 def build_all_figures(out_dir: Path, data_dir: Path = Path("data")) -> list[str]:
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[str] = []
-    for png, (report_name, fn) in FIGURES.items():
-        path = data_dir / report_name
-        if not path.exists():
-            print(f"skip: {path} not found (committed {png} stands)")
+    for png, spec in FIGURES.items():
+        fn: Callable[[dict[str, Any]], Any] = spec["fn"]
+        path = _first_existing(data_dir, spec["report"])
+        if path is None:
+            print(f"skip: none of {spec['report']} under {data_dir} (committed {png} stands)")
             continue
         report = json.loads(path.read_text(encoding="utf-8"))
+        aux = _first_existing(data_dir, spec.get("aux", []))
+        if aux is not None:
+            report["_aux"] = json.loads(aux.read_text(encoding="utf-8"))
         fig = fn(report)
         fig.savefig(out_dir / png, dpi=130)
-        print("wrote", out_dir / png)
+        print("wrote", out_dir / png, f"(from {path.name}{' + ' + aux.name if aux else ''})")
         written.append(png)
     return written

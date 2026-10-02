@@ -24,12 +24,12 @@ placed from control classes — never invented.</p>
 <tr>
 <td><a href="refusal-probe.html">Refusal probe + dual-use audit</a></td>
 <td>validated, served</td>
-<td>the refusal direction separates harmful from harmless prompts by 22.5–22.9 across two runs; bands calibrated; the dual-use audit shows it encodes refusal disposition, not subject matter</td>
+<td>the refusal direction separates harmful from harmless prompts by 22.5–22.9 across two runs; bands calibrated; the dual-use audit is evidence it encodes refusal disposition, not subject matter</td>
 </tr>
 <tr>
 <td><a href="performed-uncertainty.html">Performed uncertainty</a></td>
-<td>hedge instrument v2 works; confident confabulation is real</td>
-<td>AUC 0.83 settled-vs-obscure after rebuilding the marker list against controls; 17 of 50 obscure answers confabulate rather than hedge</td>
+<td>instrument works; positive set is a measured negative</td>
+<td>hedge AUC 0.83 settled-vs-obscure (in-sample); on the positive set AUC 0.53 — the model does not perform uncertainty on settled-science prompts; 17 of 50 obscure answers confabulate rather than hedge</td>
 </tr>
 <tr>
 <td><a href="response-fidelity.html">Response fidelity</a></td>
@@ -53,7 +53,7 @@ not results themselves. The contested-topic pages are <strong>mechanism tests, n
 topics.</p>
 <p>Sources: <a href="sources.html">sources.html</a>. Exact commands and the AWS pattern:
 <a href="reproductions.html">reproductions.html</a>. Design documents for every line of work live in
-<code>docs/superpowers/specs/</code> and are the authoritative record; this site summarizes them.</p>
+<a href="../superpowers/specs/"><code>docs/superpowers/specs/</code></a> and are the authoritative record; this site summarizes them.</p>
 </main>
-<footer>ESTA research record. Mechanism tests on Qwen 2.5 7B Instruct; SCHEMA_VERSION 0.1.1 -- nothing here is a served capability.</footer>
+<footer>ESTA research record. Mechanism tests on Qwen 2.5 7B Instruct; SCHEMA_VERSION 0.1.1 -- the Phase 1 refusal probe is the only served signal; nothing else here is a served capability.</footer>
 </body></html>

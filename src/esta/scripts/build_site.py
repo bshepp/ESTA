@@ -19,7 +19,9 @@ import re
 import sys
 from pathlib import Path
 
-SITE = Path("docs/site")
+# Anchored to the repo, not the cwd: --check from anywhere validates the committed site,
+# and never passes vacuously on an empty glob.
+SITE = Path(__file__).resolve().parents[3] / "docs" / "site"
 SRC = SITE / "src"
 FIGURES = SITE / "figures"
 CONTRACT = ("Question", "Verdict", "Measured", "Figures", "Reasoning", "What it changes", "Source")
@@ -32,7 +34,8 @@ NAV = (("index", "Overview"), ("refusal-probe", "Refusal probe"),
 
 _H2 = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 _FIG = re.compile(r"!\[[^\]]*\]\(figures/([^)\s]+)\)")
-_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s#]+\.html)\)")
+# every non-image link target; the <...> form carries targets with spaces or parentheses
+_LINK = re.compile(r"(?<!!)\[[^\]]*\]\((?:<([^>]+)>|([^)\s]+))\)")
 _INFERENCE = re.compile(r"\*?\(inference\)\*?")
 
 
@@ -63,12 +66,23 @@ def referenced_figures(md_text: str) -> set[str]:
 
 
 def internal_links(md_text: str) -> set[str]:
-    return {link for link in _LINK.findall(md_text) if "://" not in link}
+    """Relative link targets, fragment stripped: pages (.html) and files such as ../specs/x.md."""
+    out: set[str] = set()
+    for angled, plain in _LINK.findall(md_text):
+        link = angled or plain
+        if "://" in link or link.startswith(("#", "mailto:")):
+            continue
+        target = link.split("#", 1)[0]
+        if target:
+            out.add(target)
+    return out
 
 
 def check(site: Path = SITE) -> list[str]:
     src, figures = site / "src", site / "figures"
     names = page_names(src)
+    if not names:
+        return [f"no source pages found under {src}"]
     problems: list[str] = []
     for name in names:
         text = (src / f"{name}.md").read_text(encoding="utf-8")
@@ -77,8 +91,11 @@ def check(site: Path = SITE) -> list[str]:
             if not (figures / fig).exists():
                 problems.append(f"{name}.md: figure 'figures/{fig}' does not exist")
         for link in sorted(internal_links(text)):
-            if Path(link).stem not in names:
-                problems.append(f"{name}.md: link '{link}' has no source page")
+            if link.endswith(".html"):
+                if Path(link).stem not in names:
+                    problems.append(f"{name}.md: link '{link}' has no source page")
+            elif not (site / link).resolve().exists():
+                problems.append(f"{name}.md: link '{link}' does not resolve from docs/site/")
     return problems
 
 
@@ -93,8 +110,9 @@ def _chrome(title: str, body_html: str, current: str) -> str:
             f"<title>{title}</title>"
             '<link rel="stylesheet" href="style.css"></head><body>\n'
             f"<nav>{nav}</nav>\n<main>\n{body_html}\n</main>\n"
-            "<footer>ESTA research record. Mechanism tests on Qwen 2.5 7B Instruct; "
-            "SCHEMA_VERSION 0.1.1 -- nothing here is a served capability.</footer>\n</body></html>\n")
+            "<footer>ESTA research record. Mechanism tests on Qwen 2.5 7B Instruct; SCHEMA_VERSION 0.1.1 -- "
+            "the Phase 1 refusal probe is the only served signal; nothing else here is a served capability."
+            "</footer>\n</body></html>\n")
 
 
 def render(site: Path = SITE) -> list[Path]:

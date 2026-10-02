@@ -61,6 +61,6 @@ distortion is never the reported signal on its own — see Reasoning.*
 
 ## Source
 
-`docs/superpowers/specs/2026-08-12-response-fidelity-design.md` and the probe-set audit
-`docs/superpowers/specs/2026-08-17-response-fidelity-probe-audit.md`. Persisted report (local,
-gitignored): `data/response_fidelity_analysis.json`.
+[2026-08-12 response-fidelity design](../superpowers/specs/2026-08-12-response-fidelity-design.md) and the
+[2026-08-17 probe-set audit](../superpowers/specs/2026-08-17-response-fidelity-probe-audit.md). Persisted
+report (local, gitignored): `data/response_fidelity_analysis.json`.

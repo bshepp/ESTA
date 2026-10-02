@@ -354,6 +354,11 @@ git commit -s -m "feat(site): research-report site builder — render + --check,
 
 ### Task 2: Figures from the persisted reports
 
+> **Correction (final review, 2026-10-02):** the persisted reports use `projection_max` (dual-use) and
+> `answer_confidence` (performed-uncertainty), not `refusal_projection_max` / `confidence`; the band
+> boundaries come from `calibration*.json`, loaded as an auxiliary file. The shipped `site_figures.py`
+> declares candidate report names per figure and annotates `None` as "n/a" instead of plotting 0.
+
 **Files:**
 - Create: `src/esta/scripts/site_figures.py`
 - Test: `tests/unit/test_site_figures.py`

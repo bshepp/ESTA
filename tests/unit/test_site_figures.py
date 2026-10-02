@@ -58,8 +58,8 @@ def test_build_all_figures_skips_missing_reports(tmp_path: Path, capsys) -> None
 
 
 def test_every_figure_has_a_report_and_a_function() -> None:
-    for png, (report, fn) in FIGURES.items():
-        assert png.endswith(".png") and report.endswith(".json") and callable(fn)
+    for png, spec in FIGURES.items():
+        assert png.endswith(".png") and spec["report"][0].endswith(".json") and callable(spec["fn"])
 
 
 def test_every_figure_function_runs_on_a_tiny_report(tmp_path: Path) -> None:
@@ -86,6 +86,73 @@ def test_every_figure_function_runs_on_a_tiny_report(tmp_path: Path) -> None:
                                                                  {"kind": "swap_b_first", "mean_lean": None}]}]},
     }
     assert set(tiny) == set(sf.FIGURES)
-    for png, (_, fn) in sf.FIGURES.items():
-        fn(tiny[png]).savefig(tmp_path / png)
+    for png, spec in sf.FIGURES.items():
+        spec["fn"](tiny[png]).savefig(tmp_path / png)
         assert (tmp_path / png).stat().st_size > 0, png
+
+
+# --- final-review fixes: real record keys, None annotation, aux calibration ----
+
+
+def test_projection_by_class_uses_the_dual_use_report_key() -> None:
+    from esta.scripts.site_figures import field_by_class
+
+    recs = [{"category": "pair", "projection_max": 20.0}, {"category": "pair", "projection_max": None},
+            {"category": "ctrl", "projection_max": 4.0}]
+    assert field_by_class(recs, "projection_max") == {"pair": [20.0], "ctrl": [4.0]}
+
+
+def test_split_na_separates_undefined_points() -> None:
+    from esta.scripts.site_figures import split_na
+
+    xs, ok, na = split_na(["0", "1", "inf"], [0.0, None, 0.5])
+    assert (xs, ok, na) == (["0", "inf"], [0.0, 0.5], ["1"])
+
+
+def test_figures_declare_report_candidates_and_optional_aux() -> None:
+    for png, spec in FIGURES.items():
+        assert png.endswith(".png")
+        assert spec["report"] and all(r.endswith(".json") for r in spec["report"])
+        assert callable(spec["fn"])
+        assert all(a.endswith(".json") for a in spec.get("aux", ()))
+
+
+def test_figures_plot_real_schema_records_not_placeholders(tmp_path: Path) -> None:
+    pytest.importorskip("matplotlib")
+    from esta.scripts.site_figures import (
+        fig_conflict_window_sweep,
+        fig_performed_uncertainty,
+        fig_refusal_calibration,
+    )
+
+    refusal = {"records": [{"category": "pair", "projection_max": 20.0}, {"category": "ctrl", "projection_max": 4.0}],
+               "_aux": {"pressure_low": 13.08, "pressure_moderate": 24.22}}
+    ax = fig_refusal_calibration(refusal).axes[0]
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["pair", "ctrl"]   # real classes, not n/a
+    assert len(ax.lines) >= 2                                                  # the two band lines drawn
+
+    perf = {"records": [{"category": "settled", "answer_confidence": 0.9, "hedge_score": 0.0},
+                        {"category": "obscure", "answer_confidence": 0.7, "hedge_score": 0.3}]}
+    fig = fig_performed_uncertainty(perf)
+    assert [t.get_text() for t in fig.axes[0].get_yticklabels()] == ["obscure", "settled"]
+
+    sweep = {"summary": {"window_sweep": [
+        {"window": 0, "by_category": {"c": {"any_conflict_rate": 0.0}}},
+        {"window": 1, "by_category": {"c": {"any_conflict_rate": None}}},
+        {"window": "inf", "by_category": {"c": {"any_conflict_rate": 0.5}}}]}}
+    ax = fig_conflict_window_sweep(sweep).axes[0]
+    assert any(t.get_text() == "n/a" for t in ax.texts)                       # None is annotated, not plotted as 0
+
+
+def test_build_all_figures_picks_first_existing_candidate_and_loads_aux(tmp_path: Path) -> None:
+    pytest.importorskip("matplotlib")
+    import json
+
+    from esta.scripts import site_figures as sf
+
+    data = tmp_path / "data"; data.mkdir()
+    (data / "dual_use_analysis.json").write_text(json.dumps(
+        {"records": [{"category": "pair", "projection_max": 20.0}]}), encoding="utf-8")
+    (data / "calibration.json").write_text(json.dumps({"pressure_low": 1.0, "pressure_moderate": 2.0}), encoding="utf-8")
+    written = sf.build_all_figures(tmp_path / "figures", data_dir=data)
+    assert written == ["refusal_calibration.png"]       # the one figure whose candidates exist

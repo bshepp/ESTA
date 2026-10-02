@@ -33,7 +33,7 @@ validation cases and matched on imperative register):</p>
 <td><strong>22.89</strong></td>
 <td>27.44</td>
 <td>4.55</td>
-<td>9.76</td>
+<td>13.08 (max-margin)*</td>
 <td>24.22</td>
 </tr>
 <tr>
@@ -48,6 +48,14 @@ validation cases and matched on imperative register):</p>
 </table>
 <p>Phase 1 validation: refused-vs-answered AUC <strong>1.00</strong>; all three <code>requires_model</code> integration tests
 pass; over-refusal on prompts the model should answer <strong>0/50</strong>.</p>
+<p>* <code>pressure_low</code> was first placed at the 95th percentile of the harmless class (9.76). That put the
+low/moderate boundary at the <em>ceiling</em> of benign traffic by construction: 92% of should-answer
+dual-use prompts landed in <code>moderate</code>. On that run the two labeled classes were completely
+separated — harmless tops out at 11.06, refusals begin at 15.10 — so the policy became the midpoint
+of that empty band (<strong>max-margin, 13.08</strong>), recorded in the calibration output as
+<code>pressure_low_policy</code>. Re-scoring the same projections dropped should-answer flagging to <strong>14% with
+no refusal missed</strong>. When the classes overlap the rule falls back to the percentile and the inversion
+check still rejects the result.</p>
 <p>Dual-use audit (38 offensive/defensive prompt pairs sharing the same underlying knowledge):</p>
 <table>
 <thead>
@@ -95,9 +103,11 @@ band boundaries are drawn when the report carries the calibration values.</em></
 <li>Secondary sensitivities are real but an order of magnitude smaller than a refusal: alarming
   vocabulary (~2.2) and harmful-topic framing (~3.4) against ~27.6. <span class="inference">(inference)</span> They are worth
   reporting to a reader of <code>safety_pressure</code> and not worth correcting for; the bands absorb them.</li>
-<li>The <code>pressure_low</code> boundary moved more between runs (9.76 → 13.57) than <code>pressure_moderate</code>
-  (24.22 → 24.24). <span class="inference">(inference)</span> The low band's edge is the less stable of the two; the
-  moderate-or-high edge — the one the Phase 2 detectors anchor on — is the stable one.</li>
+<li>Under the same max-margin policy the boundaries moved little between the two extractions:
+  <code>pressure_low</code> 13.08 → 13.57, <code>pressure_moderate</code> 24.22 → 24.24. <span class="inference">(inference)</span> Both edges are
+  stable run to run; the larger historical jump in <code>pressure_low</code> was a <em>policy</em> change (percentile
+  → max-margin), not instability, and the moderate-or-high edge — the one the Phase 2 detectors
+  anchor on — barely moved at all.</li>
 </ul>
 <h2>What it changes</h2>
 <ul>
@@ -108,9 +118,10 @@ band boundaries are drawn when the report carries the calibration values.</em></
   own refusal threshold.</li>
 </ul>
 <h2>Source</h2>
-<p>Validation run: <code>docs/epistemic-transparency-agent (1).md</code> (the Phase 1 validation section);
-calibration design: <code>docs/superpowers/specs/2026-06-22-calibration-loop-design.md</code>. Persisted report
-(local, gitignored): <code>data/dual_use_analysis_qwen7b.json</code>; calibration: <code>data/calibration_qwen7b.json</code>.</p>
+<p>Validation run: <a href="../epistemic-transparency-agent (1).md">the Phase 1 validation section of the project spec</a>;
+calibration design: <a href="../superpowers/specs/2026-06-22-calibration-loop-design.md">2026-06-22 calibration-loop design</a>.
+Persisted report (local, gitignored): <code>data/dual_use_analysis_qwen7b.json</code>; calibration:
+<code>data/calibration_qwen7b.json</code>.</p>
 </main>
-<footer>ESTA research record. Mechanism tests on Qwen 2.5 7B Instruct; SCHEMA_VERSION 0.1.1 -- nothing here is a served capability.</footer>
+<footer>ESTA research record. Mechanism tests on Qwen 2.5 7B Instruct; SCHEMA_VERSION 0.1.1 -- the Phase 1 refusal probe is the only served signal; nothing else here is a served capability.</footer>
 </body></html>

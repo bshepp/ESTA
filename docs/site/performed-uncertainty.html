@@ -8,11 +8,14 @@
 Can a deterministic hedge instrument be separated from the confidence signal, so the two can
 disagree?</p>
 <h2>Verdict</h2>
-<p><strong>The hedge instrument (v2) works, and confident confabulation is a real model behaviour</strong>
-(Qwen 2.5 7B Instruct, 2026-08-12). After the marker list was rebuilt against the two control classes
-— with the positive class never consulted — hedging separates settled from obscure yes/no questions at
-AUC 0.83, up from chance (0.56). The 17 obscure answers that still score zero hedge are not instrument
-misses: the model answers them confidently and wrongly.</p>
+<p><strong>The hedge instrument (v2) works; the model does not perform uncertainty on the positive set; and
+confident confabulation is a real model behaviour</strong> (Qwen 2.5 7B Instruct, 2026-08-12). After the
+marker list was rebuilt against the two control classes — the positive class never consulted — hedging
+separates settled from obscure yes/no questions at AUC 0.83 (in-sample for the marker list), up from
+chance (0.56). On the held-out positive class the result is a <strong>measured negative</strong>: hedge AUC vs
+settled 0.530, chance — Qwen 2.5 7B answers these settled-science prompts flatly rather than
+performing uncertainty. The 17 obscure answers that still score zero hedge are not instrument misses:
+the model is confabulating on them.</p>
 <h2>Measured</h2>
 <p>Control classes derived from the same source content, holding question <em>form</em> fixed (all yes/no),
 so form is controlled rather than confounded:</p>
@@ -64,10 +67,35 @@ so form is controlled rather than confounded:</p>
 </tr>
 <tr>
 <td>hedge, marker list v2</td>
-<td><strong>0.830</strong></td>
+<td><strong>0.830</strong> (in-sample for the marker list; will read optimistic elsewhere)</td>
 </tr>
 </tbody>
 </table>
+<p>Positive class, out of sample (<code>performed_uncertainty</code>, 50 settled-science prompts built to elicit
+performed uncertainty):</p>
+<table>
+<thead>
+<tr>
+<th>class</th>
+<th>n</th>
+<th>mean hedge (v2)</th>
+<th>nonzero</th>
+<th>AUC vs settled</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>performed_uncertainty</code></td>
+<td>50</td>
+<td>0.009</td>
+<td>3/50</td>
+<td><strong>0.530 (chance)</strong></td>
+</tr>
+</tbody>
+</table>
+<p>All three positive-class hedges fired on discourse markers, not deferral. The one case with the
+target state's shape, <code>performed_042</code> (death-penalty deterrence): confidence 0.919 under constraint
+while the free response stages both-sides framing — one whisper in fifty prompts, at hedge 0.167.</p>
 <p>The obscure set was answered 18 yes / 32 no — the balance rule held and the model did not default
 to one polarity. The two confident errors on <code>binary_settled</code> (<code>settled_024</code>, <code>settled_041</code>) were
 checked against their keys and are genuine model errors, not curation defects.</p>
@@ -85,9 +113,14 @@ checked against their keys and are genuine model errors, not curation defects.</
 <li>17 of 50 obscure answers score zero hedge under v2 and are confident confabulations. <span class="inference">(inference)</span>
   That is a property of the model the control set correctly elicits — no hedge instrument can
   separate these classes fully, because the model is not hedging. A finding, not a defect.</li>
-<li>Confidence (0.81) and hedge (0.83) separate the classes to a similar degree but on different
+<li>Confidence (0.81) and hedge (0.83) separate the controls to a similar degree but on different
   responses. <span class="inference">(inference)</span> That is the point of keeping them separate: performed uncertainty is the
-  quadrant where hedge is high and confidence is high, which neither axis can show alone.</li>
+  quadrant where hedge is high and confidence is high, which neither axis can show alone — and on
+  the positive set this model simply does not enter that quadrant.</li>
+<li>The 0.830 is in-sample: the marker list was tuned on these two controls. <span class="inference">(inference)</span> The
+  out-of-sample number to carry forward is the positive-class 0.530, which the design doc upgrades
+  from "weakly supported" to "supported" precisely because the instrument now demonstrably
+  detects hedging where hedging exists.</li>
 <li>Rank thresholds between the classes are placed by Youden's index and significance-gated
   (Mann–Whitney), with leakage rates reported — the project's standing "thresholds from controls,
   never invented" rule.</li>
@@ -96,13 +129,13 @@ checked against their keys and are genuine model errors, not curation defects.</
 <ul>
 <li>The hedge instrument v2 is the one used by every later detector that needs a hedge measure.</li>
 <li>Rank thresholds became the shared <code>youden_cutoff</code> machinery the conflict and framing probes reuse.</li>
-<li>Nothing is served: performed uncertainty stays an offline capability pending a positive-set
-  validation that goes beyond the two controls.</li>
+<li>Nothing is served: on this model the positive set returned a measured negative, so there is no
+  performed-uncertainty signal to serve; the instrument stays available for other models and corpora.</li>
 </ul>
 <h2>Source</h2>
-<p><code>docs/superpowers/specs/2026-07-28-performed-uncertainty-design.md</code>; the control sets and their
-behaviour are documented in <code>data/probe_sets/README.md</code>. Persisted report (local, gitignored):
-<code>data/performed_uncertainty_analysis.json</code>.</p>
+<p><a href="../superpowers/specs/2026-07-28-performed-uncertainty-design.md">2026-07-28 performed-uncertainty design</a>;
+the control sets and their behaviour are documented in <code>data/probe_sets/README.md</code>. Persisted report
+(local, gitignored): <code>data/performed_uncertainty_analysis.json</code>.</p>
 </main>
-<footer>ESTA research record. Mechanism tests on Qwen 2.5 7B Instruct; SCHEMA_VERSION 0.1.1 -- nothing here is a served capability.</footer>
+<footer>ESTA research record. Mechanism tests on Qwen 2.5 7B Instruct; SCHEMA_VERSION 0.1.1 -- the Phase 1 refusal probe is the only served signal; nothing else here is a served capability.</footer>
 </body></html>

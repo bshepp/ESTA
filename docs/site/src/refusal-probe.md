@@ -21,11 +21,20 @@ validation cases and matched on imperative register):
 
 | run | separation | harmful mean | harmless mean | `pressure_low` | `pressure_moderate` |
 | --- | --- | --- | --- | --- | --- |
-| 2026-07-28 (Phase 1 validation) | **22.89** | 27.44 | 4.55 | 9.76 | 24.22 |
+| 2026-07-28 (Phase 1 validation) | **22.89** | 27.44 | 4.55 | 13.08 (max-margin)\* | 24.22 |
 | 2026-08-19 (regenerated on-box for the Phase 2 runs) | **22.49** | 27.49 | 4.99 | 13.57 | 24.24 |
 
 Phase 1 validation: refused-vs-answered AUC **1.00**; all three `requires_model` integration tests
 pass; over-refusal on prompts the model should answer **0/50**.
+
+\* `pressure_low` was first placed at the 95th percentile of the harmless class (9.76). That put the
+low/moderate boundary at the *ceiling* of benign traffic by construction: 92% of should-answer
+dual-use prompts landed in `moderate`. On that run the two labeled classes were completely
+separated — harmless tops out at 11.06, refusals begin at 15.10 — so the policy became the midpoint
+of that empty band (**max-margin, 13.08**), recorded in the calibration output as
+`pressure_low_policy`. Re-scoring the same projections dropped should-answer flagging to **14% with
+no refusal missed**. When the classes overlap the rule falls back to the percentile and the inversion
+check still rejects the result.
 
 Dual-use audit (38 offensive/defensive prompt pairs sharing the same underlying knowledge):
 
@@ -56,9 +65,11 @@ band boundaries are drawn when the report carries the calibration values.*
 - Secondary sensitivities are real but an order of magnitude smaller than a refusal: alarming
   vocabulary (~2.2) and harmful-topic framing (~3.4) against ~27.6. *(inference)* They are worth
   reporting to a reader of `safety_pressure` and not worth correcting for; the bands absorb them.
-- The `pressure_low` boundary moved more between runs (9.76 → 13.57) than `pressure_moderate`
-  (24.22 → 24.24). *(inference)* The low band's edge is the less stable of the two; the
-  moderate-or-high edge — the one the Phase 2 detectors anchor on — is the stable one.
+- Under the same max-margin policy the boundaries moved little between the two extractions:
+  `pressure_low` 13.08 → 13.57, `pressure_moderate` 24.22 → 24.24. *(inference)* Both edges are
+  stable run to run; the larger historical jump in `pressure_low` was a *policy* change (percentile
+  → max-margin), not instability, and the moderate-or-high edge — the one the Phase 2 detectors
+  anchor on — barely moved at all.
 
 ## What it changes
 
@@ -70,6 +81,7 @@ band boundaries are drawn when the report carries the calibration values.*
 
 ## Source
 
-Validation run: `docs/epistemic-transparency-agent (1).md` (the Phase 1 validation section);
-calibration design: `docs/superpowers/specs/2026-06-22-calibration-loop-design.md`. Persisted report
-(local, gitignored): `data/dual_use_analysis_qwen7b.json`; calibration: `data/calibration_qwen7b.json`.
+Validation run: [the Phase 1 validation section of the project spec](<../epistemic-transparency-agent (1).md>);
+calibration design: [2026-06-22 calibration-loop design](../superpowers/specs/2026-06-22-calibration-loop-design.md).
+Persisted report (local, gitignored): `data/dual_use_analysis_qwen7b.json`; calibration:
+`data/calibration_qwen7b.json`.
