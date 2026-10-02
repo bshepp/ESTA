@@ -98,3 +98,11 @@ def test_render_wraps_inference_tag_and_writes_every_page(tmp_path: Path) -> Non
     html = (site / "conflict-state.html").read_text(encoding="utf-8")
     assert '<span class="inference">(inference)</span>' in html
     assert 'href="style.css"' in html and 'href="index.html"' in html   # shared chrome + nav
+
+
+def test_committed_site_sources_pass_check() -> None:
+    """CI gate: the committed docs/site sources must reference only figures that exist, link only
+    pages that exist, and follow the page contract. Needs no optional deps."""
+    from esta.scripts.build_site import SITE, check
+
+    assert check(SITE) == []

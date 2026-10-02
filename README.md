@@ -21,6 +21,10 @@ ESTA is a local, self-hosted wrapper around open-weights language models that em
 
 ## Status
 
+**Research record (local site):** open `docs/site/index.html` — verdicts, measured tables, figures,
+sources, and exact reproductions for every Phase 1–2 run. Rebuild with `python -m esta.scripts.build_site`
+(`[site]` extra; `--check` needs nothing extra and runs in CI).
+
 **Phase 1 (MVP)** — Code complete and validated end-to-end on Qwen 2.5 7B Instruct (2026-07-28). Delivers token-level confidence metrics, refusal-direction projection, empirical threshold calibration, and hash-chained audit logging. The probe separates refused from answered prompts cleanly on 7B (AUC 1.00; extraction separation 22.89). Known open issue: the `low`/`moderate` band boundary sits at the top of the benign distribution, so defensive security questions read as `moderate` — see [Example response](#example-response).
 
 **Phase 2 (Conflict and Features)** — Planned. Adds conflict-state detection, SAE-based feature attribution, performed-uncertainty detection, and response-fidelity / input-distortion detection.
