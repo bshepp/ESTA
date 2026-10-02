@@ -373,6 +373,77 @@ the authored swap/paraphrase text. Success looks like `two_sided` above `one_sid
 oscillation, and `torn_rate`, with `neutral` not engaged and the controls separating cleanly; the
 on-topic cos is reported either way. Still a mechanism test, not a truth test.
 
+## Measured outcome — v1b.1 Israel-Palestine lean check (Qwen 2.5 7B Instruct, 2026-10-02)
+
+One topic, g5.xlarge, ~45 min with the model pre-materialized (vs ~90 min lazy-loaded before).
+**Still a mechanism test, not a truth test**, and the lean axis is whatever the curated A/B prompt
+contrast picked out — read every number with both caveats attached.
+
+**Extraction diagnostics.** Off-topic baseline reproduced v1b exactly: cos(A, B) = +0.9872. The
+**on-topic baseline experiment is a clean negative — cos(A, B) = +0.9843**: a descriptive on-topic
+baseline does *not* yield independent advocacy axes; the shared component survives subtraction. The
+lean geometry is therefore the right model, not a workaround. cos(topic, lean) = 0.0000 as built.
+
+**Two calibration flaws the real data exposed, both fixed as free rescores** (the per-token series
+are persisted): (1) a θ_lean from |lean| over *all* tokens cannot place — off-topic neutral prompts
+have **zero engaged tokens** (θ_topic = 8.51 excludes them cleanly) yet project arbitrary noise
+onto the lean axis (|lean| peak 6.75, comparable to one-sided's 7.77); the lean is only defined while
+*on* the topic. (2) Uncentered, the raw axis separates the sides by **magnitude, not sign** (engaged
+mean-lean +4.77 for `one_sided_a`, still +0.63 for `one_sided_b`): its zero, set by prompt
+activations, is not "between the sides" at generation time, and everything read as committed-A
+(swap flips 0%). Fix: calibrate the **midpoint** (offset 2.70) and **scale** (half the A–B gap,
+2.07) from the one-sided controls on engaged tokens — `two_sided` never used — gated on A ranking
+above B (AUC 1.00, p = 4.7e-4). One-sided answers then sit at ±1.00 by construction.
+
+| class | n | engaged tok/resp | balance | oscillation | mean lean | lean_shift (all) | lean_shift (paraphrase only) | swap_flip | torn |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `two_sided` | 8 | 12.1 | 0.52 | 0.02 | **+0.72** | 1.25 | 0.48 (2/7 ≥ 1) | **6/8** | **0.75** |
+| `one_sided_a` | 8 | 15.0 | 0.53 | 0.04 | +1.00 | 0.42 | 0.42 (0/8) | n/a | **0.00** |
+| `one_sided_b` | 8 | 15.1 | 0.43 | 0.07 | −1.00 | 0.24 | 0.24 (0/8) | n/a | **0.00** |
+| `neutral` | 18 | 0.0 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+
+### 1. The lean-flip ground truth discriminates — the first signal in three runs that does
+
+Naming the sides in the opposite order **flips the two-sided answer's lean in 6 of 8 prompts**;
+no one-sided answer crosses the torn threshold (0/16). Per prompt the effect is large and
+consistent in direction: Israeli-first orderings land at +0.31 … +1.15, Palestinian-first at −1.07
+… +0.21 — presentation order moves the lean by roughly one full one-sided commitment unit toward
+whichever side is named first. The two exceptions (`ip_ts_02` historical claims, `ip_ts_03`
+barrier) stay A-leaning under both orders. The honest qualifier: under the **shared** paraphrase
+family alone, two-sided shifts only modestly more than one-sided (0.48 vs 0.42 / 0.24; 2 of 7
+cross 1.0); the discrimination comes from the side-order swap, the perturbation designed for
+two-sided asks.
+
+### 2. The internal per-token signals do not track it
+
+`balance` is ≈ 0.5 for *every* engaged class (two-sided 0.52, one-sided 0.53 / 0.43) and
+`oscillation` ≈ 0 everywhere; neither associates with `torn` (p = 0.43 / 0.60). A two-sided answer's
+token-level lean profile looks like a committed one-sided answer's — the model does not hover at
+the midpoint or vacillate within a response. **Tension manifests as order-sensitivity between
+generations, not as balance or oscillation within one.** That is a substantive constraint on what
+a served "conflict" signal could be: on this model and axis, it is a property measurable only by
+re-asking, not from a single forward pass.
+
+### 3. Two-sided answers lean toward A on average (+0.72)
+
+By this axis the "analyze each side" answers sit about 0.7 of a one-sided commitment toward the
+Israeli-security framing; with Palestinian-first ordering they hover near the midpoint, with
+Israeli-first they commit. `ip_ts_08` (right of return) is the one base answer that leans B
+(−0.78) — and Israeli-first ordering flips it to +0.31. Reported as a model-behaviour observation
+with both caveats; not a claim about the topic, and not separable here from what the curated
+contrast prompts define as "A" and "B".
+
+### What this changes
+
+- **The lean geometry + swap GT is the keeper.** It should be the v1b.1 default for the other
+  three topics (authored swap pairs needed per topic; `--geometry lean`), with the two calibration
+  fixes already in.
+- **Drop balance/oscillation as the served candidates** for framing conflict; keep them in the
+  report as the negative result. The candidate signal is the swap-flip, which needs K generations
+  — a design fact for any `conflict_state` field (it cannot be a single-pass metric).
+- **n = 8 is small.** Before generalizing, run the three remaining topics (cheap: ~45 min each
+  with pre-materialization), then decide on the served field.
+
 ## Open questions
 
 None blocking. Decisions made during brainstorming (2026-09-27): per-topic narrative pairs (not a
