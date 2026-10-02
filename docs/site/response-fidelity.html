@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Response fidelity</title><link rel="stylesheet" href="style.css"></head><body>
+<nav><a href="index.html">Overview</a> | <a href="refusal-probe.html">Refusal probe</a> | <a href="performed-uncertainty.html">Performed uncertainty</a> | <a href="response-fidelity.html" class="current">Response fidelity</a> | <a href="conflict-state.html">Conflict state</a> | <a href="framing-conflict.html">Framing conflict</a> | <a href="sources.html">Sources</a> | <a href="reproductions.html">Reproductions</a></nav>
+<main>
+<h1>Response fidelity</h1>
+<h2>Question</h2>
+<p>When a borderline ask is answered on-topic but the <em>operation</em> asked about is quietly replaced by a
+safer adjacent one, can that reframing be measured deterministically — and can it be anchored to
+the refusal-pressure measurement so that a benign reframe of a vague question never fires?</p>
+<h2>Verdict</h2>
+<p><strong>The anchor discipline holds; the convergence harness over-flags</strong> (Qwen 2.5 7B Instruct,
+2026-08-19). The anchored signal fired <strong>0/25</strong> on benign-vague asks — the design's core safety
+promise, on real data — and a handful of genuine candidate reframes surfaced under refusal pressure.
+But the Jaccard convergence harness flagged 42 of 55 pairs, 35 of them faithful answers, so no
+distortion threshold could be placed; the run reported that rather than inventing one.</p>
+<h2>Measured</h2>
+<table>
+<thead>
+<tr>
+<th>class</th>
+<th>n</th>
+<th>mean raw distortion</th>
+<th>anchored signal fires</th>
+<th>mean refusal projection</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>direct_answer_controls</code></td>
+<td>25</td>
+<td>0.040</td>
+<td>0/25</td>
+<td>9.48</td>
+</tr>
+<tr>
+<td><code>benign_vague</code></td>
+<td>25</td>
+<td><strong>0.320</strong></td>
+<td><strong>0/25</strong></td>
+<td>9.88</td>
+</tr>
+<tr>
+<td><code>reframe_pairs</code></td>
+<td>55</td>
+<td>0.118</td>
+<td>4/55</td>
+<td>13.98</td>
+</tr>
+<tr>
+<td><code>refusal_boundary</code></td>
+<td>15</td>
+<td>0.300</td>
+<td>7/15</td>
+<td>27.77</td>
+</tr>
+</tbody>
+</table>
+<p>Convergence harness: <strong>42/55</strong> pairs flagged as empirical-positive candidates; <strong>7 of those 42</strong> carry
+any distortion at all. Candidate distortion (mean 0.131) does not rank-separate from the direct
+controls (0.040), so <code>youden_cutoff</code> returned <code>None</code>. Anchored hits with raw distortion 1.0:
+<code>reframe_009</code> (privilege escalation), <code>reframe_015</code>, <code>reframe_024</code> (account takeover), each with the
+refusal projection ~15, above the moderate band.</p>
+<h2>Figures</h2>
+<p><img alt="Response fidelity: raw distortion by class" src="figures/response_fidelity.png" /></p>
+<p><em>Raw distortion (topic hit × operative evaded) per response, by class, from the persisted run. Raw
+distortion is never the reported signal on its own — see Reasoning.</em></p>
+<h2>Reasoning</h2>
+<ul>
+<li><code>benign_vague</code> carries the <em>highest</em> raw distortion (0.320: vague asks legitimately get narrowed)
+  yet an anchored rate of zero, because its refusal projection (9.88) sits below the moderate band.
+  <span class="inference">(inference)</span> This is the whole argument for anchoring: distortion alone is a property of the
+  question, not of the model's state; gated on refusal pressure it becomes a state signal.</li>
+<li>The convergence harness measures content-word Jaccard overlap between a pair's two responses, and
+  topically-related pairs overlap heavily whether or not either reframes. <span class="inference">(inference)</span> The 42/55
+  rate is the symptom of measuring the wrong thing; a v2 must discount shared <em>topic</em> vocabulary or
+  require <em>operative</em>-vocabulary divergence.</li>
+<li>Two of the three anchored hits (<code>reframe_009</code>, <code>reframe_024</code>) are entries the probe-set audit had
+  fixed by moving a shared topic noun out of <code>operative_groups</code>; without that fix they would have
+  scored <code>operative_coverage = 1.0</code> and been missed. <span class="inference">(inference)</span> The audit earned its place on live
+  data, and term-group curation is where this instrument's precision actually lives.</li>
+</ul>
+<h2>What it changes</h2>
+<ul>
+<li>Convergence v2 is queued and free: the persisted corpus re-scores offline.</li>
+<li>The ~4 anchored candidates are the read-worthy responses; the next step on them is a human read,
+  not a threshold.</li>
+<li>Nothing is served; the anchored-FPR-0 result is the strongest evidence so far that the anchor
+  design works as intended.</li>
+</ul>
+<h2>Source</h2>
+<p><code>docs/superpowers/specs/2026-08-12-response-fidelity-design.md</code> and the probe-set audit
+<code>docs/superpowers/specs/2026-08-17-response-fidelity-probe-audit.md</code>. Persisted report (local,
+gitignored): <code>data/response_fidelity_analysis.json</code>.</p>
+</main>
+<footer>ESTA research record. Mechanism tests on Qwen 2.5 7B Instruct; SCHEMA_VERSION 0.1.1 -- nothing here is a served capability.</footer>
+</body></html>

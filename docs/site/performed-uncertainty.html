@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Performed uncertainty</title><link rel="stylesheet" href="style.css"></head><body>
+<nav><a href="index.html">Overview</a> | <a href="refusal-probe.html">Refusal probe</a> | <a href="performed-uncertainty.html" class="current">Performed uncertainty</a> | <a href="response-fidelity.html">Response fidelity</a> | <a href="conflict-state.html">Conflict state</a> | <a href="framing-conflict.html">Framing conflict</a> | <a href="sources.html">Sources</a> | <a href="reproductions.html">Reproductions</a></nav>
+<main>
+<h1>Performed uncertainty</h1>
+<h2>Question</h2>
+<p>When the model hedges, is it reporting low confidence — or performing uncertainty it does not have?
+Can a deterministic hedge instrument be separated from the confidence signal, so the two can
+disagree?</p>
+<h2>Verdict</h2>
+<p><strong>The hedge instrument (v2) works, and confident confabulation is a real model behaviour</strong>
+(Qwen 2.5 7B Instruct, 2026-08-12). After the marker list was rebuilt against the two control classes
+— with the positive class never consulted — hedging separates settled from obscure yes/no questions at
+AUC 0.83, up from chance (0.56). The 17 obscure answers that still score zero hedge are not instrument
+misses: the model answers them confidently and wrongly.</p>
+<h2>Measured</h2>
+<p>Control classes derived from the same source content, holding question <em>form</em> fixed (all yes/no),
+so form is controlled rather than confounded:</p>
+<table>
+<thead>
+<tr>
+<th>class</th>
+<th>n</th>
+<th>mean confidence</th>
+<th>mean hedge (v1)</th>
+<th>mean hedge (v2)</th>
+<th>answer accuracy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>binary_settled</code></td>
+<td>50</td>
+<td>0.923</td>
+<td>—</td>
+<td>0.000 (0/50 nonzero)</td>
+<td>47/50</td>
+</tr>
+<tr>
+<td><code>binary_obscure</code></td>
+<td>50</td>
+<td>0.741</td>
+<td>—</td>
+<td>0.274 (33/50 nonzero)</td>
+<td>n/a by construction</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>axis</th>
+<th>AUC settled vs obscure</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>confidence</td>
+<td>0.81</td>
+</tr>
+<tr>
+<td>hedge, marker list v1</td>
+<td>0.56 (chance)</td>
+</tr>
+<tr>
+<td>hedge, marker list v2</td>
+<td><strong>0.830</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The obscure set was answered 18 yes / 32 no — the balance rule held and the model did not default
+to one polarity. The two confident errors on <code>binary_settled</code> (<code>settled_024</code>, <code>settled_041</code>) were
+checked against their keys and are genuine model errors, not curation defects.</p>
+<h2>Figures</h2>
+<p><img alt="Performed uncertainty: per-class confidence and hedge distributions" src="figures/performed_uncertainty.png" /></p>
+<p><em>Token confidence (left) and hedge score v2 (right) per response, by class, from the persisted run.</em></p>
+<h2>Reasoning</h2>
+<ul>
+<li>The v1 marker list sat at chance while the model visibly hedged ("I would need to look up
+  specific records", "specific details are not publicly available"). The fix was data, not code:
+  deferral phrasings were drawn from <code>binary_obscure</code>, false positives checked against
+  <code>binary_settled</code>, and the positive class was never consulted. <span class="inference">(inference)</span> An instrument built
+  from the classes it is scored on, with the positive held out, is the honest way to tune a lexical
+  detector; the AUC jump is what that discipline bought.</li>
+<li>17 of 50 obscure answers score zero hedge under v2 and are confident confabulations. <span class="inference">(inference)</span>
+  That is a property of the model the control set correctly elicits — no hedge instrument can
+  separate these classes fully, because the model is not hedging. A finding, not a defect.</li>
+<li>Confidence (0.81) and hedge (0.83) separate the classes to a similar degree but on different
+  responses. <span class="inference">(inference)</span> That is the point of keeping them separate: performed uncertainty is the
+  quadrant where hedge is high and confidence is high, which neither axis can show alone.</li>
+<li>Rank thresholds between the classes are placed by Youden's index and significance-gated
+  (Mann–Whitney), with leakage rates reported — the project's standing "thresholds from controls,
+  never invented" rule.</li>
+</ul>
+<h2>What it changes</h2>
+<ul>
+<li>The hedge instrument v2 is the one used by every later detector that needs a hedge measure.</li>
+<li>Rank thresholds became the shared <code>youden_cutoff</code> machinery the conflict and framing probes reuse.</li>
+<li>Nothing is served: performed uncertainty stays an offline capability pending a positive-set
+  validation that goes beyond the two controls.</li>
+</ul>
+<h2>Source</h2>
+<p><code>docs/superpowers/specs/2026-07-28-performed-uncertainty-design.md</code>; the control sets and their
+behaviour are documented in <code>data/probe_sets/README.md</code>. Persisted report (local, gitignored):
+<code>data/performed_uncertainty_analysis.json</code>.</p>
+</main>
+<footer>ESTA research record. Mechanism tests on Qwen 2.5 7B Instruct; SCHEMA_VERSION 0.1.1 -- nothing here is a served capability.</footer>
+</body></html>

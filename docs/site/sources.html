@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sources</title><link rel="stylesheet" href="style.css"></head><body>
+<nav><a href="index.html">Overview</a> | <a href="refusal-probe.html">Refusal probe</a> | <a href="performed-uncertainty.html">Performed uncertainty</a> | <a href="response-fidelity.html">Response fidelity</a> | <a href="conflict-state.html">Conflict state</a> | <a href="framing-conflict.html">Framing conflict</a> | <a href="sources.html" class="current">Sources</a> | <a href="reproductions.html">Reproductions</a></nav>
+<main>
+<h1>Sources</h1>
+<p>The papers ESTA's state detectors are grounded in, each with the stable cite-key the code uses
+(<code>Grounding: [key]</code> in module docstrings), so a reader in the source can trace a state back to its
+literature. The canonical list is <code>docs/REFERENCES.md</code>.</p>
+<h2>arditi-2024</h2>
+<p>Arditi et al. (2024), <em>Refusal in Language Models Is Mediated by a Single Direction</em>,
+<a href="https://arxiv.org/abs/2406.11717">arXiv:2406.11717</a>.</p>
+<p>Grounds the refusal-direction probe (<code>probes/refusal.py</code>, <code>scripts/extract_refusal_direction.py</code>)
+and the contrastive-direction extraction + orthogonalization method reused for the conflict probe's
+reasoning axis (<code>scripts/extract_reasoning_direction.py</code>) and the framing probe's narrative, topic,
+and lean axes (<code>scripts/extract_narrative_directions.py</code>).</p>
+<h2>kadavath-2022</h2>
+<p>Kadavath et al. (2022), <em>Language Models (Mostly) Know What They Know</em>,
+<a href="https://arxiv.org/abs/2207.05221">arXiv:2207.05221</a>.</p>
+<p>Grounds the token-confidence metrics — entropy, margin, top-logprob — as a self-knowledge signal
+(<code>confidence/metrics.py</code>, <code>extraction.py</code>).</p>
+<h2>sharma-2023</h2>
+<p>Sharma et al. (2023), <em>Towards Understanding Sycophancy in Language Models</em>,
+<a href="https://arxiv.org/abs/2310.13548">arXiv:2310.13548</a>.</p>
+<p>Grounds the performed-uncertainty detector: RLHF rewards hedge-language on topics the model is
+internally confident about (<code>hedging.py</code>, <code>scripts/analyze_performed_uncertainty.py</code>).</p>
+<h2>templeton-2024</h2>
+<p>Templeton et al. (2024), <em>Scaling Monosemanticity</em>,
+<a href="https://transformer-circuits.pub/2024/scaling-monosemanticity/">transformer-circuits.pub</a>.</p>
+<p>Grounds the interpretable-feature framing behind SAE feature attribution (Phase 2 component 2, not
+yet built) and the feature-competition intuition behind conflict-state and the lean geometry.</p>
+<h2>ESTA-original constructs (grounded, not lifted)</h2>
+<p>Recorded so the code can cite an honest grounding rather than imply a paper defines them.</p>
+<ul>
+<li><strong>Response-fidelity / input-distortion</strong> (<code>fidelity.py</code>, <code>scripts/analyze_response_fidelity.py</code>)
+  — ESTA's construct, carried forward from the archived D-CCTS (<code>behavioral-agent-metrics</code>)
+  framework; the one salvageable idea is <em>input distortion as an observable signal, valuable only
+  when anchored to a real internal-state measurement</em>.</li>
+<li><strong>Conflict-state</strong> (<code>conflict.py</code>, <code>scripts/analyze_conflict_state.py</code>) — two competing axes
+  (refusal and an orthogonalized reasoning axis) firing at once. Method from <code>arditi-2024</code>,
+  intuition from <code>templeton-2024</code>, the definition itself the project's.</li>
+<li><strong>Lean geometry</strong> (<code>lean.py</code>, <code>oscillation.py</code>, <code>scripts/analyze_framing_conflict.py</code>) — a shared
+  topic axis plus a bipolar framing-lean axis for two framings of one topic, with "torn" defined as
+  the lean flipping under logically-equivalent reframing. The project's construct; see the framing
+  page for why two independent narrative axes are not available from a two-class contrast.</li>
+</ul>
+</main>
+<footer>ESTA research record. Mechanism tests on Qwen 2.5 7B Instruct; SCHEMA_VERSION 0.1.1 -- nothing here is a served capability.</footer>
+</body></html>

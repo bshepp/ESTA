@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Refusal probe and dual-use audit</title><link rel="stylesheet" href="style.css"></head><body>
+<nav><a href="index.html">Overview</a> | <a href="refusal-probe.html" class="current">Refusal probe</a> | <a href="performed-uncertainty.html">Performed uncertainty</a> | <a href="response-fidelity.html">Response fidelity</a> | <a href="conflict-state.html">Conflict state</a> | <a href="framing-conflict.html">Framing conflict</a> | <a href="sources.html">Sources</a> | <a href="reproductions.html">Reproductions</a></nav>
+<main>
+<h1>Refusal probe and dual-use audit</h1>
+<h2>Question</h2>
+<p>Does a single residual-stream direction, extracted contrastively from harmful and harmless
+prompts, measure the model's <em>refusal disposition</em> on a given prompt — and can its scale be
+calibrated into bands from control classes rather than invented?</p>
+<h2>Verdict</h2>
+<p><strong>Validated and served</strong> (Qwen 2.5 7B Instruct, layer 14; runs of 2026-07-28 and 2026-08-19). The
+direction separates harmful from harmless prompts by ~22.5–22.9, refused-vs-answered separation is
+AUC 1.00, behavioural over-refusal is 0/50, and the paired dual-use audit shows the direction tracks
+refusal disposition rather than subject matter. It is the one Phase 1 detector in the served
+<code>epistemic_state</code> block (<code>safety_pressure</code>, with calibrated bands).</p>
+<h2>Measured</h2>
+<p>Two independent extractions (200 AdvBench harmful vs 200 Alpaca harmless, both held out from the
+validation cases and matched on imperative register):</p>
+<table>
+<thead>
+<tr>
+<th>run</th>
+<th>separation</th>
+<th>harmful mean</th>
+<th>harmless mean</th>
+<th><code>pressure_low</code></th>
+<th><code>pressure_moderate</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2026-07-28 (Phase 1 validation)</td>
+<td><strong>22.89</strong></td>
+<td>27.44</td>
+<td>4.55</td>
+<td>9.76</td>
+<td>24.22</td>
+</tr>
+<tr>
+<td>2026-08-19 (regenerated on-box for the Phase 2 runs)</td>
+<td><strong>22.49</strong></td>
+<td>27.49</td>
+<td>4.99</td>
+<td>13.57</td>
+<td>24.24</td>
+</tr>
+</tbody>
+</table>
+<p>Phase 1 validation: refused-vs-answered AUC <strong>1.00</strong>; all three <code>requires_model</code> integration tests
+pass; over-refusal on prompts the model should answer <strong>0/50</strong>.</p>
+<p>Dual-use audit (38 offensive/defensive prompt pairs sharing the same underlying knowledge):</p>
+<table>
+<thead>
+<tr>
+<th>probe-validity check</th>
+<th>result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>pairs separated in the expected direction</td>
+<td><strong>38/38</strong>, mean delta +16.0</td>
+</tr>
+<tr>
+<td>where the delta is largest</td>
+<td>where the two framings share the <em>most</em> underlying knowledge</td>
+</tr>
+<tr>
+<td>alarming vocabulary alone (form held fixed)</td>
+<td>lifts projection by ~2.2</td>
+</tr>
+<tr>
+<td>harmful-topic framing alone</td>
+<td>~3.4</td>
+</tr>
+<tr>
+<td>a genuine refusal</td>
+<td>~27.6</td>
+</tr>
+</tbody>
+</table>
+<h2>Figures</h2>
+<p><img alt="Refusal probe: projections by class and calibrated band boundaries" src="figures/refusal_calibration.png" /></p>
+<p><em>Max refusal-direction projection per response, by class, from the dual-use audit report; the dashed
+band boundaries are drawn when the report carries the calibration values.</em></p>
+<h2>Reasoning</h2>
+<ul>
+<li>The two extractions, a month apart on different boxes, land within 0.4 of each other in
+  separation. <span class="inference">(inference)</span> The direction is a stable property of the model and the contrast, not
+  of a particular run.</li>
+<li>The dual-use delta is largest exactly where the offensive and defensive framings share the most
+  knowledge. <span class="inference">(inference)</span> If the direction encoded subject matter, those pairs would be the
+  <em>hardest</em> to separate; that they are the easiest is the strongest evidence it encodes the
+  disposition to refuse.</li>
+<li>Secondary sensitivities are real but an order of magnitude smaller than a refusal: alarming
+  vocabulary (~2.2) and harmful-topic framing (~3.4) against ~27.6. <span class="inference">(inference)</span> They are worth
+  reporting to a reader of <code>safety_pressure</code> and not worth correcting for; the bands absorb them.</li>
+<li>The <code>pressure_low</code> boundary moved more between runs (9.76 → 13.57) than <code>pressure_moderate</code>
+  (24.22 → 24.24). <span class="inference">(inference)</span> The low band's edge is the less stable of the two; the
+  moderate-or-high edge — the one the Phase 2 detectors anchor on — is the stable one.</li>
+</ul>
+<h2>What it changes</h2>
+<ul>
+<li>The served <code>safety_pressure</code> field carries the calibrated band and the probe version; when the
+  probe is absent the field is the explicit uncalibrated stub, never a number.</li>
+<li><code>pressure_moderate</code> became the shared anchor for the response-fidelity and conflict-state
+  detectors ("high refusal" = at or above the moderate band), so no Phase 2 detector invented its
+  own refusal threshold.</li>
+</ul>
+<h2>Source</h2>
+<p>Validation run: <code>docs/epistemic-transparency-agent (1).md</code> (the Phase 1 validation section);
+calibration design: <code>docs/superpowers/specs/2026-06-22-calibration-loop-design.md</code>. Persisted report
+(local, gitignored): <code>data/dual_use_analysis_qwen7b.json</code>; calibration: <code>data/calibration_qwen7b.json</code>.</p>
+</main>
+<footer>ESTA research record. Mechanism tests on Qwen 2.5 7B Instruct; SCHEMA_VERSION 0.1.1 -- nothing here is a served capability.</footer>
+</body></html>

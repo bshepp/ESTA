@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Conflict state: refusal vs reasoning</title><link rel="stylesheet" href="style.css"></head><body>
+<nav><a href="index.html">Overview</a> | <a href="refusal-probe.html">Refusal probe</a> | <a href="performed-uncertainty.html">Performed uncertainty</a> | <a href="response-fidelity.html">Response fidelity</a> | <a href="conflict-state.html" class="current">Conflict state</a> | <a href="framing-conflict.html">Framing conflict</a> | <a href="sources.html">Sources</a> | <a href="reproductions.html">Reproductions</a></nav>
+<main>
+<h1>Conflict state: refusal vs reasoning</h1>
+<h2>Question</h2>
+<p>Is there a forward-pass state in which safety-training pressure (the refusal axis) and substantive
+reasoning (a reasoning axis orthogonalized against refusal) are both high at once — the
+"constraint region" the project was founded on, where a fluent answer conceals an internally torn
+model — and can it be detected as the conjunction of the two axes?</p>
+<h2>Verdict</h2>
+<p><strong>Structured negative on v1a, then the event definition was fixed (v2)</strong> (Qwen 2.5 7B Instruct,
+2026-08-19 run; 2026-08-28 windowed rescore). Both axes are well identified and both thresholds well
+placed, but <strong>0 conflict events fired on any class</strong> under the same-token rule. The windowed v2
+rescore shows the rule — not the machinery — was the suppressor: a one-token gap flips 7 of 15
+refusal-bait prompts into events while the three true negatives stay at 0% at every gap. The
+constraint region itself <strong>never raises the refusal axis</strong> (0/25), so it is unreachable by this axis
+pair: the result that pointed the project at framing-vs-framing conflict instead.</p>
+<h2>Measured</h2>
+<p>Prerequisites, all self-validated on the run: refusal separation 22.49; θ_ref = <code>pressure_moderate</code>
+= 24.24; reasoning axis cos to refusal <strong>0.34</strong> before orthogonalization (separable); θ_eng = 11.32 by
+Youden between the recall and analytical controls at AUC 1.00, p = 1.6e-07.</p>
+<p>v1a, same-token conjunction (<code>min(s_ref, s_eng) ≥ 1</code> at one token):</p>
+<table>
+<thead>
+<tr>
+<th>class</th>
+<th>max conflict (min of ratios)</th>
+<th>refusal axis crosses θ_ref</th>
+<th>reasoning axis crosses θ_eng</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>direct_recall</code> (neither)</td>
+<td>0.02</td>
+<td>0/18</td>
+<td>0/18</td>
+</tr>
+<tr>
+<td><code>uncontested_analytical</code> (reasoning only)</td>
+<td>0.36</td>
+<td>0/18</td>
+<td>18/18</td>
+</tr>
+<tr>
+<td><code>constraint_region</code> (positive)</td>
+<td>0.46</td>
+<td><strong>0/25</strong></td>
+<td>25/25</td>
+</tr>
+<tr>
+<td><code>refusal_boundary</code> (refusal bait)</td>
+<td>0.81 (max 0.99)</td>
+<td>14/15</td>
+<td>10/15</td>
+</tr>
+</tbody>
+</table>
+<p>v2, windowed conjunction — any-conflict rate (mean windowed-max peak) by class across the gap sweep:</p>
+<table>
+<thead>
+<tr>
+<th>gap (max tokens apart)</th>
+<th>constraint_region</th>
+<th>uncontested_analytical</th>
+<th>direct_recall</th>
+<th>refusal_boundary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>0</strong> (v1a, same token)</td>
+<td>0% (0.46)</td>
+<td>0% (0.36)</td>
+<td>0% (0.02)</td>
+<td>0% (0.81)</td>
+</tr>
+<tr>
+<td>1</td>
+<td>0% (0.46)</td>
+<td>0% (0.36)</td>
+<td>0% (0.03)</td>
+<td><strong>47%</strong> (0.95)</td>
+</tr>
+<tr>
+<td>2</td>
+<td>0% (0.46)</td>
+<td>0% (0.36)</td>
+<td>0% (0.03)</td>
+<td>47% (0.96)</td>
+</tr>
+<tr>
+<td>3</td>
+<td>0% (0.46)</td>
+<td>0% (0.36)</td>
+<td>0% (0.03)</td>
+<td>47% (0.96)</td>
+</tr>
+<tr>
+<td>5</td>
+<td>0% (0.47)</td>
+<td>0% (0.36)</td>
+<td>0% (0.03)</td>
+<td>53% (0.99)</td>
+</tr>
+<tr>
+<td><strong>∞</strong> (whole response)</td>
+<td>0% (0.47)</td>
+<td>0% (0.36)</td>
+<td>0% (0.04)</td>
+<td><strong>67%</strong> (1.02)</td>
+</tr>
+</tbody>
+</table>
+<h2>Figures</h2>
+<p><img alt="Conflict v2: windowed conjunction sweep" src="figures/conflict_window_sweep.png" /></p>
+<p><em>Any-conflict rate against the allowed token gap between the two axes' crossings, per class, from
+the persisted v2 rescore. Three classes sit on the zero line at every gap.</em></p>
+<h2>Reasoning</h2>
+<ul>
+<li>On all 25 contested-topic prompts the refusal projection stays at ~47% of θ_ref while the
+  reasoning axis crosses on every one; Israel-Palestine (<code>constraint_001</code>, <code>constraint_003</code>) is the
+  same, with plainly analytical responses. <span class="inference">(inference)</span> Qwen 2.5 7B treats an analytically framed
+  contested question as an analytical task, not a refusal-adjacent one; the v1a hypothesis — that
+  the constraint region <em>is</em> refusal-vs-engagement conflict — is not supported on this model for
+  this framing. A plausible confound is that "analyze both sides of…" itself defuses the pressure a
+  blunter framing would raise.</li>
+<li>The one near-miss is diagnostic: on <code>boundary_004</code> the refusal axis peaks at token 2 (1.25×θ) and
+  the reasoning axis at token 0 (1.13×θ) — different tokens — so the same-token conjunction misses
+  by 0.011. <span class="inference">(inference)</span> The event definition, not the machinery, suppressed the count; the v2
+  sweep confirms it, recovering 7/15 at a single-token gap and 10/15 whole-response, which matches
+  the 10/15 refusal-bait responses that crossed θ_eng at all.</li>
+<li>Widening a window cannot manufacture a crossing on an axis that never crosses; the three true
+  negatives stay flat at 0% through the whole sweep. <span class="inference">(inference)</span> The relaxation is
+  discriminating, not blunt — it fires only where both axes genuinely cross a few tokens apart.</li>
+<li>The class the windowed rule does light up is refusal <em>bait</em>: the model refusing and reasoning
+  about its refusal. <span class="inference">(inference)</span> That is validated machinery with a working event definition, but
+  it is not "conflict" in the intended contested-topic sense. The constraint region's tension, if it
+  exists on this model, is between two content framings — which is what the framing probe tests.</li>
+</ul>
+<h2>What it changes</h2>
+<ul>
+<li>Every conflict report now carries a <code>window_sweep</code> block; gap 0 reproduces v1a exactly, so the
+  published numbers remain the sweep's anchored baseline. No single gap is blessed; separation
+  between classes picks the operating point.</li>
+<li>The refusal-vs-reasoning axis pair is retained as validated machinery awaiting a positive set that
+  lights both axes together. Nothing justifies a served <code>conflict_state</code> field.</li>
+<li>The project's next detector targeted framing-vs-framing conflict for the constraint region.</li>
+</ul>
+<h2>Source</h2>
+<p><code>docs/superpowers/specs/2026-08-18-conflict-state-probe-design.md</code> (measured outcome and the v2
+section). Persisted reports (local, gitignored): <code>data/conflict_state_analysis.json</code> (v1a) and
+<code>data/conflict_state_analysis_v2.json</code> (the free windowed rescore).</p>
+</main>
+<footer>ESTA research record. Mechanism tests on Qwen 2.5 7B Instruct; SCHEMA_VERSION 0.1.1 -- nothing here is a served capability.</footer>
+</body></html>

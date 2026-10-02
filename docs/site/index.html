@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ESTA — research record</title><link rel="stylesheet" href="style.css"></head><body>
+<nav><a href="index.html" class="current">Overview</a> | <a href="refusal-probe.html">Refusal probe</a> | <a href="performed-uncertainty.html">Performed uncertainty</a> | <a href="response-fidelity.html">Response fidelity</a> | <a href="conflict-state.html">Conflict state</a> | <a href="framing-conflict.html">Framing conflict</a> | <a href="sources.html">Sources</a> | <a href="reproductions.html">Reproductions</a></nav>
+<main>
+<h1>ESTA — research record</h1>
+<p><strong>Question:</strong> can the internal state under which an open-weights LLM generates a response be
+measured and exposed alongside the response — token confidence, safety pressure, performed
+uncertainty, response fidelity, and internal conflict — without blocking, filtering, or changing
+the response?</p>
+<p><strong>Status (2026-10-02):</strong> Phase 1 is served (<code>SCHEMA_VERSION 0.1.1</code>: token confidence,
+refusal-direction projection, provenance, a hash-chained audit log). The Phase 2 detectors below are
+<strong>offline research capabilities</strong>; none has graduated into the served <code>epistemic_state</code> block.
+Every result is on <strong>Qwen 2.5 7B Instruct</strong>, residual layer 14, greedy decoding, with thresholds
+placed from control classes — never invented.</p>
+<table>
+<thead>
+<tr>
+<th>line of work</th>
+<th>verdict</th>
+<th>one line</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="refusal-probe.html">Refusal probe + dual-use audit</a></td>
+<td>validated, served</td>
+<td>the refusal direction separates harmful from harmless prompts by 22.5–22.9 across two runs; bands calibrated; the dual-use audit shows it encodes refusal disposition, not subject matter</td>
+</tr>
+<tr>
+<td><a href="performed-uncertainty.html">Performed uncertainty</a></td>
+<td>hedge instrument v2 works; confident confabulation is real</td>
+<td>AUC 0.83 settled-vs-obscure after rebuilding the marker list against controls; 17 of 50 obscure answers confabulate rather than hedge</td>
+</tr>
+<tr>
+<td><a href="response-fidelity.html">Response fidelity</a></td>
+<td>anchor discipline holds; convergence over-flags</td>
+<td>anchored signal fires 0/25 on benign-vague asks; the Jaccard convergence harness flags 42/55 pairs, 35 of them faithful — needs v2</td>
+</tr>
+<tr>
+<td><a href="conflict-state.html">Conflict state (refusal vs reasoning)</a></td>
+<td>structured negative → event definition fixed (v2)</td>
+<td>0 same-token events; a one-token window flips 7/15 refusal-bait prompts while the three true negatives stay at 0%; the constraint region never raises the refusal axis</td>
+</tr>
+<tr>
+<td><a href="framing-conflict.html">Framing conflict (two narratives)</a></td>
+<td>v1b collinear (cos 0.987) → v1b.1 swap-flip discriminates</td>
+<td>two-sided answers flip their framing lean under side-order swap 6/8; one-sided 0/16; the internal balance/oscillation signals do not track it</td>
+</tr>
+</tbody>
+</table>
+<p>Statements marked <span class="inference">(inference)</span> on the pages are the author's reasoning from the measured results,
+not results themselves. The contested-topic pages are <strong>mechanism tests, not truth tests</strong> about the
+topics.</p>
+<p>Sources: <a href="sources.html">sources.html</a>. Exact commands and the AWS pattern:
+<a href="reproductions.html">reproductions.html</a>. Design documents for every line of work live in
+<code>docs/superpowers/specs/</code> and are the authoritative record; this site summarizes them.</p>
+</main>
+<footer>ESTA research record. Mechanism tests on Qwen 2.5 7B Instruct; SCHEMA_VERSION 0.1.1 -- nothing here is a served capability.</footer>
+</body></html>
